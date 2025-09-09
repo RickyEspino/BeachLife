@@ -1,31 +1,11 @@
 // src/app/merchants/[slug]/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
 import { createServerClientSupabase } from "@/lib/supabase/server";
 import Mapbox from "@/components/Mapbox";
 import IssueVoucherButton from "./IssueVoucherButton";
 
 export const dynamic = "force-dynamic";
-
-// helper: are we logged in (server-side)?
-async function isLoggedIn() {
-  const cookieStore = cookies();
-  const sb = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get: (n) => cookieStore.get(n)?.value,
-        set: (n, v, o) => cookieStore.set({ name: n, value: v, ...o }),
-        remove: (n, o) => cookieStore.set({ name: n, value: "", ...o, maxAge: 0 }),
-      },
-    }
-  );
-  const { data: { user } } = await sb.auth.getUser();
-  return !!user;
-}
 
 export default async function MerchantDetail({ params }: { params: { slug: string } }) {
   const supabase = createServerClientSupabase();
@@ -40,7 +20,9 @@ export default async function MerchantDetail({ params }: { params: { slug: strin
 
   if (!m) notFound();
 
-  const loggedIn = await isLoggedIn();
+  // Logged-in check using the same server supabase client
+  const { data: { user } } = await supabase.auth.getUser();
+  const loggedIn = !!user;
 
   return (
     <div className="grid gap-6">
