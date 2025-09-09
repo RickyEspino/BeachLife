@@ -11,8 +11,6 @@ export default function Header() {
           <Link href="/merchants" className="hover:underline">Merchants</Link>
           <Link href="/dashboard" className="hover:underline">Dashboard</Link>
           <Link href="/settings" className="hover:underline">Settings</Link>
-          {/* Only shows for admins */}
-          {/* @ts-expect-error Async Server Component */}
           <AdminNavLink />
           <Link
             href="/login"
