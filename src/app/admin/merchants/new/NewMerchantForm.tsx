@@ -1,63 +1,90 @@
-// src/app/admin/merchants/new/NewMerchantForm.tsx
 "use client";
 
-import * as React from "react";
-import { useActionState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Toast from "@/components/Toast";
 
-type ActionResult = { ok: boolean; message?: string; slug?: string; field?: string };
+// Keep this in sync with server action return type
+type ActionResult = {
+  ok: boolean;
+  message?: string;
+  slug?: string;
+  field?: "name" | "slug" | "lat" | "lng";
+};
 
-export default function NewMerchantForm({
-  action,
-}: {
-  action: (prevState: ActionResult | null, formData: FormData) => Promise<ActionResult>;
-}) {
+type Props = {
+  action: (_prevState: unknown, formData: FormData) => Promise<ActionResult>;
+};
+
+export default function NewMerchantForm({ action }: Props) {
   const router = useRouter();
-  const [state, formAction, pending] = useActionState<ActionResult, FormData>(action, null);
-  const [showToast, setShowToast] = React.useState<string | null>(null);
 
-  const slugError = state?.ok === false && state.field === "slug" ? state.message : null;
+  // form state via server action
+  const [result, formAction, pending] = useActionState<ActionResult, FormData>(action, {
+    ok: false,
+  });
 
-  React.useEffect(() => {
-    if (state?.ok && state.message) {
-      setShowToast(state.message);
-      const to = setTimeout(() => {
-        // Go to the merchant detail after a beat
-        router.replace(`/merchants/${state.slug}`);
-      }, 900);
-      return () => clearTimeout(to);
+  // local UI state
+  const [toastOpen, setToastOpen] = useState(false);
+  const [toastVariant, setToastVariant] = useState<"success" | "error" | "info">("info");
+  const [toastMsg, setToastMsg] = useState<string>("");
+
+  // When the server responds, show toast & route if success
+  useEffect(() => {
+    if (result?.message) {
+      setToastMsg(result.message);
+      setToastVariant(result.ok ? "success" : "error");
+      setToastOpen(true);
     }
-    if (!state?.ok && state?.message && !state?.field) {
-      // generic failure
-      setShowToast(state.message);
+    if (result?.ok && result.slug) {
+      // small delay so the toast is visible in dev; feel free to remove
+      const t = setTimeout(() => router.push(`/merchants/${result.slug}`), 600);
+      return () => clearTimeout(t);
     }
-  }, [state, router]);
+  }, [result, router]);
+
+  // For inline field error highlighting
+  const errorField = result?.ok ? undefined : (result?.field as ActionResult["field"] | undefined);
+
+  const inputClass = useMemo(
+    () =>
+      "rounded-xl bg-transparent border p-3 outline-none focus:ring-1 transition " +
+      "border-white/10 focus:ring-white/20",
+    []
+  );
+
+  const invalidClass = "border-red-500/70 focus:ring-red-500/50";
 
   return (
     <>
       <form action={formAction} className="grid gap-3">
         <div className="grid gap-1">
           <label className="text-sm">Name</label>
-          <input name="name" className="rounded-xl bg-transparent border border-white/10 p-3" required />
+          <input
+            name="name"
+            className={`${inputClass} ${errorField === "name" ? invalidClass : ""}`}
+            required
+            aria-invalid={errorField === "name"}
+          />
         </div>
 
         <div className="grid gap-1">
           <label className="text-sm">Slug</label>
           <input
             name="slug"
-            className={`rounded-xl bg-transparent border p-3 ${
-              slugError ? "border-red-500/70" : "border-white/10"
-            }`}
             placeholder="lowercase-dashes"
+            className={`${inputClass} ${errorField === "slug" ? invalidClass : ""}`}
             required
+            aria-invalid={errorField === "slug"}
           />
-          {slugError && <p className="text-xs text-red-400 mt-1">{slugError}</p>}
+          <p className="text-xs text-white/50">
+            This becomes the URL: <code>/merchants/&lt;slug&gt;</code>
+          </p>
         </div>
 
         <div className="grid gap-1">
           <label className="text-sm">Category</label>
-          <select name="category" className="rounded-xl bg-transparent border border-white/10 p-3" defaultValue="other">
+          <select name="category" defaultValue="other" className={inputClass}>
             <option value="food">food</option>
             <option value="nightlife">nightlife</option>
             <option value="activity">activity</option>
@@ -71,22 +98,41 @@ export default function NewMerchantForm({
         <div className="grid gap-1 grid-cols-2">
           <div>
             <label className="text-sm">Latitude</label>
-            <input name="lat" type="number" step="any" className="w-full rounded-xl bg-transparent border border-white/10 p-3" required />
+            <input
+              name="lat"
+              type="number"
+              step="any"
+              className={`${inputClass} ${errorField === "lat" ? invalidClass : ""} w-full`}
+              required
+              aria-invalid={errorField === "lat"}
+            />
           </div>
           <div>
             <label className="text-sm">Longitude</label>
-            <input name="lng" type="number" step="any" className="w-full rounded-xl bg-transparent border border-white/10 p-3" required />
+            <input
+              name="lng"
+              type="number"
+              step="any"
+              className={`${inputClass} ${errorField === "lng" ? invalidClass : ""} w-full`}
+              required
+              aria-invalid={errorField === "lng"}
+            />
           </div>
         </div>
 
         <div className="grid gap-1">
           <label className="text-sm">Points per scan</label>
-          <input name="points_per_scan" type="number" defaultValue={50} className="rounded-xl bg-transparent border border-white/10 p-3" />
+          <input name="points_per_scan" type="number" defaultValue={50} className={inputClass} />
         </div>
 
         <div className="grid gap-1">
           <label className="text-sm">Owner Email (optional)</label>
-          <input name="owner_email" type="email" placeholder="merchant-owner@example.com" className="rounded-xl bg-transparent border border-white/10 p-3" />
+          <input
+            name="owner_email"
+            type="email"
+            placeholder="merchant-owner@example.com"
+            className={inputClass}
+          />
         </div>
 
         <div className="flex items-center gap-2">
@@ -96,15 +142,23 @@ export default function NewMerchantForm({
 
         <button
           disabled={pending}
-          className="rounded-xl bg-seafoam px-4 py-2 font-semibold mt-2 disabled:opacity-60"
+          className="rounded-xl bg-seafoam px-4 py-2 font-semibold disabled:opacity-60"
         >
           {pending ? "Creating..." : "Create Merchant"}
         </button>
+
+        {!result?.ok && result?.message && (
+          <p className="text-sm text-red-400">{result.message}</p>
+        )}
       </form>
 
-      <Toast open={!!showToast} onClose={() => setShowToast(null)}>
-        {showToast}
-      </Toast>
+      <Toast
+        open={toastOpen}
+        onClose={() => setToastOpen(false)}
+        title={toastVariant === "success" ? "Success" : "Notice"}
+        description={toastMsg}
+        variant={toastVariant}
+      />
     </>
   );
 }
