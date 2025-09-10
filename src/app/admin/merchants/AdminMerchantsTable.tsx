@@ -28,7 +28,7 @@ type Props = {
 export default function AdminMerchantsTable({ items, updateAction, deleteAction }: Props) {
   // Optimistic local edits
   const [optimistic, setOptimistic] = useOptimistic(items);
-  const [toast, setToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [Toast, setToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Per-row update state handler
   const [updateState, updateFormAction, updating] =
@@ -50,7 +50,7 @@ export default function AdminMerchantsTable({ items, updateAction, deleteAction 
 
   return (
     <>
-      {toast && <Toast type={toast.type} onClose={() => setToast(null)}>{toast.text}</Toast>}
+      {Toast && <Toast type={Toast.type} onClose={() => setToast(null)}>{Toast.text}</Toast>}
 
       <div className="overflow-x-auto rounded-2xl border border-white/10">
         <table className="w-full text-sm">
