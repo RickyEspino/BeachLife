@@ -1,10 +1,11 @@
-// src/app/admin/merchants/QuickEditDialog.tsx
+// src/components/QuickEditDialog.tsx
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import React, { useActionState, useEffect, useState } from "react";
 import Toast from "@/components/Toast";
+import { saveMerchant } from "./actions";
 
-type MerchantRow = {
+type Merchant = {
   id: string;
   name: string;
   slug: string;
@@ -13,129 +14,146 @@ type MerchantRow = {
   points_per_scan: number;
 };
 
-type ActionResult = { ok: boolean; message?: string };
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  merchant: Merchant | null;
+  onSaved?: (updated: Merchant) => void;
+};
 
-export default function QuickEditDialog({ merchant }: { merchant: MerchantRow }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState(merchant.name);
-  const [points, setPoints] = useState<number>(merchant.points_per_scan);
-  const [active, setActive] = useState<boolean>(merchant.active);
-  const [msg, setMsg] = useState<{ kind: "success" | "error" | "info"; text: string } | null>(null);
+type ActionState =
+  | { ok: true; data: Merchant; message?: string }
+  | { ok: false; field?: string; message: string }
+  | null;
 
-  const initialState: ActionResult = useMemo(() => ({ ok: false, message: "" }), []);
-  const [state, submitAction, pending] = useActionState<ActionResult, FormData>(
-    async (_prev, formData) => {
-      try {
-        const res = await fetch("/api/admin/merchants/quick-edit", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            id: merchant.id,
-            name: formData.get("name"),
-            points_per_scan: Number(formData.get("points_per_scan")),
-            active: Boolean(formData.get("active")),
-          }),
-        });
-        const data = (await res.json()) as ActionResult;
-        return data;
-      } catch {
-        return { ok: false, message: "Network error." };
-      }
-    },
-    initialState
+export default function QuickEditDialog({
+  open,
+  onClose,
+  merchant,
+  onSaved,
+}: Props) {
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(
+    saveMerchant,
+    null
   );
+  const [msg, setMsg] = useState<
+    { kind: "success" | "error" | "info"; text: string } | null
+  >(null);
+  const [local, setLocal] = useState<Merchant | null>(merchant);
+
+  useEffect(() => setLocal(merchant), [merchant]);
 
   useEffect(() => {
-    if (state.message) {
-      setMsg({ kind: state.ok ? "success" : "error", text: state.message });
-      if (state.ok) setOpen(false);
+    if (!state) return;
+    if (state.ok) {
+      setMsg({ kind: "success", text: state.message || "Saved!" });
+      onSaved?.(state.data);
+      const t = setTimeout(onClose, 600);
+      return () => clearTimeout(t);
+    } else {
+      setMsg({ kind: "error", text: state.message });
     }
-  }, [state]);
+  }, [state, onClose, onSaved]);
+
+  if (!open || !local) return null;
 
   return (
     <>
-      <button
-        className="underline"
-        onClick={() => setOpen(true)}
-        aria-label={`Quick edit ${merchant.name}`}
-      >
-        Edit
-      </button>
-
-      {open && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <form
-            className="w-full max-w-md rounded-2xl bg-[var(--card)] border border-white/10 shadow-soft p-4 grid gap-3"
-            action={(fd) => {
-              // keep inputs in sync with local state
-              submitAction(fd);
-            }}
-            onSubmit={(e) => {
-              // preload values to FormData for booleans/numbers
-              const form = e.currentTarget as HTMLFormElement;
-              const fd = new FormData(form);
-              fd.set("name", name);
-              fd.set("points_per_scan", String(points));
-              if (active) fd.set("active", "on"); else fd.delete("active");
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Quick edit</h3>
-              <button type="button" onClick={() => setOpen(false)} className="text-white/60">
-                Close
-              </button>
-            </div>
-
-            <label className="grid gap-1">
-              <span className="text-sm text-white/70">Name</span>
-              <input
-                name="name"
-                className="rounded-xl bg-transparent border border-white/10 p-3"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
-
-            <label className="grid gap-1">
-              <span className="text-sm text-white/70">Points per scan</span>
-              <input
-                name="points_per_scan"
-                type="number"
-                className="rounded-xl bg-transparent border border-white/10 p-3"
-                value={points}
-                onChange={(e) => setPoints(Number(e.target.value))}
-              />
-            </label>
-
-            <label className="inline-flex items-center gap-2">
-              <input
-                name="active"
-                type="checkbox"
-                checked={active}
-                onChange={(e) => setActive(e.target.checked)}
-              />
-              <span>Active</span>
-            </label>
-
-            <button
-              disabled={pending}
-              className="rounded-xl bg-seafoam px-4 py-2 font-semibold mt-2 disabled:opacity-60"
-            >
-              {pending ? "Saving…" : "Save"}
-            </button>
-          </form>
-        </div>
-      )}
-
       {msg && (
-        <Toast
-          kind={msg.kind}
-          show
-          onClose={() => setMsg(null)}
-        >
+        <Toast kind={msg.kind} onClose={() => setMsg(null)}>
           {msg.text}
         </Toast>
       )}
+
+      <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[var(--card,#0b0b0c)] shadow-soft">
+          <div className="flex items-center justify-between p-4 border-b border-white/10">
+            <h2 className="text-lg font-semibold">Quick Edit – {local.name}</h2>
+            <button
+              type="button"
+              className="text-white/70 hover:text-white"
+              onClick={onClose}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+
+          <form action={formAction} className="p-4 grid gap-3">
+            <input type="hidden" name="id" value={local.id} />
+
+            <label className="grid gap-1">
+              <span className="text-sm text-white/80">Name</span>
+              <input
+                name="name"
+                defaultValue={local.name}
+                className="rounded-xl bg-transparent border border-white/10 p-3"
+                required
+              />
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-sm text-white/80">Slug</span>
+              <input
+                name="slug"
+                defaultValue={local.slug}
+                className="rounded-xl bg-transparent border border-white/10 p-3"
+                required
+              />
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-sm text-white/80">Category</span>
+              <select
+                name="category"
+                defaultValue={local.category}
+                className="rounded-xl bg-transparent border border-white/10 p-3"
+              >
+                <option value="food">food</option>
+                <option value="nightlife">nightlife</option>
+                <option value="activity">activity</option>
+                <option value="shopping">shopping</option>
+                <option value="golf">golf</option>
+                <option value="events">events</option>
+                <option value="other">other</option>
+              </select>
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-sm text-white/80">Points per scan</span>
+              <input
+                name="points_per_scan"
+                type="number"
+                defaultValue={local.points_per_scan}
+                className="rounded-xl bg-transparent border border-white/10 p-3"
+              />
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input name="active" type="checkbox" defaultChecked={local.active} />
+              <span>Active</span>
+            </label>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-xl border border-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={pending}
+                className="px-4 py-2 rounded-xl bg-seafoam font-semibold disabled:opacity-60"
+              >
+                {pending ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     </>
   );
 }
