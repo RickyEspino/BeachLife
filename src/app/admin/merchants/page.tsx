@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerClientSupabase } from "@/lib/supabase/server";
-import QuickEditDialog from "./QuickEditDialog";
+import RowActions from "./RowActions";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +21,16 @@ async function requireAdmin() {
   return supabase;
 }
 
+type Merchant = {
+  id: string;
+  name: string;
+  slug: string;
+  category: string;
+  active: boolean;
+  points_per_scan: number;
+  updated_at: string | null;
+};
+
 export default async function AdminMerchantsPage() {
   const supabase = await requireAdmin();
 
@@ -28,12 +38,12 @@ export default async function AdminMerchantsPage() {
     .from("merchants")
     .select("id, name, slug, category, active, points_per_scan, updated_at")
     .order("updated_at", { ascending: false })
-    .limit(50);
+    .limit(100);
 
   return (
     <div className="max-w-5xl p-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Admin · Merchants</h1>
+        <h1 className="text-2xl font-bold">Merchants</h1>
         <Link
           href="/admin/merchants/new"
           className="rounded-xl bg-seafoam px-4 py-2 font-semibold"
@@ -45,7 +55,7 @@ export default async function AdminMerchantsPage() {
       {!merchants?.length ? (
         <p className="text-white/70">No merchants yet.</p>
       ) : (
-        <div className="rounded-2xl border border-white/10 bg-[var(--card)] shadow-soft">
+        <div className="overflow-x-auto rounded-2xl border border-white/10">
           <table className="w-full text-sm">
             <thead className="text-white/60">
               <tr className="border-b border-white/10">
@@ -67,21 +77,25 @@ export default async function AdminMerchantsPage() {
                   <td className="p-3">{m.active ? "✅" : "—"}</td>
                   <td className="p-3">{m.points_per_scan}</td>
                   <td className="p-3 text-white/60">
-                    {new Date(m.updated_at as string).toLocaleString()}
+                    {m.updated_at ? new Date(m.updated_at).toLocaleString() : "—"}
                   </td>
-                  <td className="p-3 flex gap-2">
-                    <Link className="underline" href={`/merchants/${m.slug}`}>View</Link>
-                    {/* Client dialog for quick edits */}
-                    <QuickEditDialog
-                      merchant={{
-                        id: m.id,
-                        name: m.name,
-                        slug: m.slug,
-                        category: m.category,
-                        active: m.active,
-                        points_per_scan: m.points_per_scan,
-                      }}
-                    />
+                  <td className="p-3">
+                    <div className="flex items-center gap-3">
+                      <Link className="underline" href={`/merchants/${m.slug}`}>
+                        View
+                      </Link>
+                      {/* Client island controls the dialog state */}
+                      <RowActions
+                        merchant={{
+                          id: m.id,
+                          name: m.name,
+                          slug: m.slug,
+                          category: m.category,
+                          active: m.active,
+                          points_per_scan: m.points_per_scan,
+                        }}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
