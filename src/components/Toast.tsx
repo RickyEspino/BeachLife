@@ -1,64 +1,42 @@
 "use client";
 
-import * as React from "react";
+import { useEffect } from "react";
+import { X } from "lucide-react";
 
 type ToastProps = {
-  open: boolean;
+  kind?: "success" | "error" | "info";
+  children: React.ReactNode;
   onClose?: () => void;
-  title?: string;
-  description?: string;
-  variant?: "success" | "error" | "info";
-  durationMs?: number; // auto-close
+  duration?: number; // auto-close after N ms
 };
 
-export default function Toast({
-  open,
-  onClose,
-  title,
-  description,
-  variant = "info",
-  durationMs = 2500,
-}: ToastProps) {
-  const [show, setShow] = React.useState(open);
+export default function Toast({ kind = "info", children, onClose, duration = 3000 }: ToastProps) {
+  useEffect(() => {
+    if (!onClose) return;
+    const timer = setTimeout(() => onClose(), duration);
+    return () => clearTimeout(timer);
+  }, [onClose, duration]);
 
-  React.useEffect(() => setShow(open), [open]);
-
-  React.useEffect(() => {
-    if (!show || !durationMs) return;
-    const t = setTimeout(() => {
-      setShow(false);
-      onClose?.();
-    }, durationMs);
-    return () => clearTimeout(t);
-  }, [show, durationMs, onClose]);
-
-  if (!show) return null;
-
-  const bg =
-    variant === "success"
+  const base =
+    "fixed bottom-6 right-6 z-[100] flex items-center gap-2 rounded-2xl px-4 py-3 shadow-lg text-white animate-fade-in-up";
+  const kindClasses =
+    kind === "success"
       ? "bg-green-600"
-      : variant === "error"
+      : kind === "error"
       ? "bg-red-600"
-      : "bg-slate-800";
+      : "bg-shell";
 
   return (
-    <div className="fixed inset-x-0 top-3 z-[9999] flex justify-center px-4">
-      <div className={`flex items-start gap-3 text-white shadow-lg rounded-xl px-4 py-3 ${bg}`}>
-        <div>
-          {title && <div className="font-semibold">{title}</div>}
-          {description && <div className="text-sm opacity-90">{description}</div>}
-        </div>
+    <div className={`${base} ${kindClasses}`}>
+      <span className="text-sm font-medium">{children}</span>
+      {onClose && (
         <button
-          aria-label="Close"
-          onClick={() => {
-            setShow(false);
-            onClose?.();
-          }}
-          className="ml-1 text-white/90 hover:text-white"
+          onClick={onClose}
+          className="ml-2 rounded-full p-1 hover:bg-white/20"
         >
-          ×
+          <X size={16} />
         </button>
-      </div>
+      )}
     </div>
   );
 }
