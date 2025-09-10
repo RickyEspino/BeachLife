@@ -1,8 +1,8 @@
-// src/app/admin/merchants/QuickEditDialog.tsx
 "use client";
 
 import React, { useActionState, useEffect, useState } from "react";
 import Toast from "@/components/Toast";
+import { saveMerchant } from "./actions";
 
 type Merchant = {
   id: string;
@@ -17,7 +17,6 @@ type Props = {
   open: boolean;
   onClose: () => void;
   merchant: Merchant | null;
-  /** Optional: called after a successful save to refresh the table */
   onSaved?: (updated: Merchant) => void;
 };
 
@@ -26,30 +25,8 @@ type ActionState =
   | { ok: false; field?: string; message: string }
   | null;
 
-async function saveMerchant(prevState: ActionState, formData: FormData): Promise<ActionState> {
-  "use server";
-  // NOTE: Replace this with your real server action to update the row.
-  // Here we just echo back the payload so the dialog/UI wiring compiles.
-  try {
-    const updated: Merchant = {
-      id: String(formData.get("id")),
-      name: String(formData.get("name") || ""),
-      slug: String(formData.get("slug") || ""),
-      category: String(formData.get("category") || "other"),
-      active: Boolean(formData.get("active")),
-      points_per_scan: Number(formData.get("points_per_scan") || 50),
-    };
-    if (!updated.name) return { ok: false, field: "name", message: "Name is required." };
-    if (!updated.slug) return { ok: false, field: "slug", message: "Slug is required." };
-    return { ok: true, data: updated, message: "Saved!" };
-  } catch {
-    return { ok: false, message: "Failed to save. Try again." };
-  }
-}
-
 export default function QuickEditDialog({ open, onClose, merchant, onSaved }: Props) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(saveMerchant, null);
-
   const [msg, setMsg] = useState<{ kind: "success" | "error" | "info"; text: string } | null>(null);
   const [local, setLocal] = useState<Merchant | null>(merchant);
 
@@ -59,8 +36,7 @@ export default function QuickEditDialog({ open, onClose, merchant, onSaved }: Pr
     if (!state) return;
     if (state.ok) {
       setMsg({ kind: "success", text: state.message || "Saved!" });
-      if (onSaved) onSaved(state.data);
-      // Close a beat after success
+      onSaved?.(state.data);
       const t = setTimeout(onClose, 600);
       return () => clearTimeout(t);
     } else {
@@ -78,10 +54,7 @@ export default function QuickEditDialog({ open, onClose, merchant, onSaved }: Pr
         </Toast>
       )}
 
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
-
-      {/* Dialog */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[var(--card,#0b0b0c)] shadow-soft">
           <div className="flex items-center justify-between p-4 border-b border-white/10">
@@ -147,11 +120,7 @@ export default function QuickEditDialog({ open, onClose, merchant, onSaved }: Pr
             </label>
 
             <label className="flex items-center gap-2">
-              <input
-                name="active"
-                type="checkbox"
-                defaultChecked={local.active}
-              />
+              <input name="active" type="checkbox" defaultChecked={local.active} />
               <span>Active</span>
             </label>
 
