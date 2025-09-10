@@ -1,3 +1,4 @@
+// src/components/QuickEditDialog.tsx
 "use client";
 
 import React, { useActionState, useEffect, useState } from "react";
@@ -25,9 +26,19 @@ type ActionState =
   | { ok: false; field?: string; message: string }
   | null;
 
-export default function QuickEditDialog({ open, onClose, merchant, onSaved }: Props) {
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(saveMerchant, null);
-  const [msg, setMsg] = useState<{ kind: "success" | "error" | "info"; text: string } | null>(null);
+export default function QuickEditDialog({
+  open,
+  onClose,
+  merchant,
+  onSaved,
+}: Props) {
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(
+    saveMerchant,
+    null
+  );
+  const [msg, setMsg] = useState<
+    { kind: "success" | "error" | "info"; text: string } | null
+  >(null);
   const [local, setLocal] = useState<Merchant | null>(merchant);
 
   useEffect(() => setLocal(merchant), [merchant]);
