@@ -2,7 +2,7 @@
 "use client";
 
 import { useActionState, useOptimistic, useState } from "react";
-import Toast from "@/components/toast";
+import Toast from "@/components/Toast";
 
 type MerchantRow = {
   id: string;
