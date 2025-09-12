@@ -10,14 +10,10 @@ async function requireAdmin() {
 
   // 1) Auth
   const { data: { user }, error: userErr } = await supabase.auth.getUser();
-  if (userErr) {
-    console.error("[admin gate] getUser error:", userErr);
-  }
-  if (!user) {
-    redirect("/login");
-  }
+  if (userErr) console.error("[admin gate] getUser error:", userErr);
+  if (!user) redirect("/login");
 
-  // 2) Profile (RLS must allow reading own row)
+  // 2) Profile
   const { data: prof, error: profErr } = await supabase
     .from("profiles")
     .select("role")
@@ -25,19 +21,15 @@ async function requireAdmin() {
     .maybeSingle();
 
   if (profErr) {
-    // Surface in logs rather than silently redirecting,
-    // so we can fix RLS/policies if they break again.
     console.error("[admin gate] profiles select error:", profErr, "user_id:", user!.id);
   }
 
   if (!prof) {
-    // Render a 403-like page to make the issue visible
-    // (helps avoid infinite redirect loops when RLS blocks)
-    return { supabase, isAdmin: false as const, reason: "No profile row for current user" };
+    return { supabase, isAdmin: false, reason: "No profile row for current user" as string | null };
   }
 
   const isAdmin = prof.role === "admin";
-  return { supabase, isAdmin: isAdmin as const, reason: isAdmin ? null : "Not admin" };
+  return { supabase, isAdmin, reason: isAdmin ? null : "Not admin" as string | null };
 }
 
 type Merchant = {
@@ -54,7 +46,6 @@ export default async function AdminMerchantsPage() {
   const gate = await requireAdmin();
 
   if (!gate.isAdmin) {
-    // Friendly 403 to avoid confusing redirects
     return (
       <div className="max-w-xl p-6">
         <h1 className="text-2xl font-bold mb-2">Access denied</h1>
@@ -121,10 +112,7 @@ export default async function AdminMerchantsPage() {
                   </td>
                   <td className="p-3">
                     <div className="flex items-center gap-3">
-                      <Link className="underline" href={`/merchants/${m.slug}`}>
-                        View
-                      </Link>
-                      {/* your RowActions island here */}
+                      <Link className="underline" href={`/merchants/${m.slug}`}>View</Link>
                       {/* <RowActions merchant={{ ... }} /> */}
                     </div>
                   </td>
