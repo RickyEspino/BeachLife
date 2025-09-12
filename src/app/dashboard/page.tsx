@@ -1,4 +1,3 @@
-// src/app/dashboard/page.tsx
 import { redirect } from "next/navigation";
 import { createServerClientSupabase } from "@/lib/supabase/server";
 import ProgressRing from "@/components/ProgressRing";
@@ -7,26 +6,22 @@ export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
   const supabase = createServerClientSupabase();
-
-  // 1) Make sure we have a user
   const { data: { user }, error: userErr } = await supabase.auth.getUser();
   if (userErr || !user) redirect("/login");
 
-  // 2) Try to get display_name from profiles (RLS must allow: id = auth.uid())
-  const { data: prof, error: profErr } = await supabase
+  // Pull display_name from profiles
+  const { data: prof } = await supabase
     .from("profiles")
     .select("display_name")
     .eq("id", user.id)
     .maybeSingle();
 
-  // 3) Compute the friendly name with sensible fallbacks
   const name =
     prof?.display_name?.trim() ||
-    (typeof user.user_metadata?.display_name === "string" && user.user_metadata.display_name.trim()) ||
-    (user.email ? user.email.split("@")[0] : "") ||
+    (user.user_metadata?.name as string | undefined) ||
+    user.email?.split("@")[0] ||
     "Friend";
 
-  // 4) Read points balance (safe if missing)
   const { data: bal } = await supabase
     .from("user_points_balance")
     .select("balance")
@@ -42,9 +37,7 @@ export default async function Dashboard() {
         <div>
           <div className="text-sm text-white/60">Welcome back</div>
           <h2 className="text-2xl font-bold">Hey, {name} 🌊</h2>
-          <p className="text-white/70 mt-2">
-            You’re {remaining} points away from your next reward.
-          </p>
+          <p className="text-white/70 mt-2">You’re {remaining} points away from your next reward.</p>
         </div>
         <div className="shrink-0">
           <ProgressRing value={points} />
