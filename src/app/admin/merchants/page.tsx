@@ -6,11 +6,25 @@ import RowActions from "./RowActions";
 
 export const dynamic = "force-dynamic";
 
+/** Ensure the current session user exists in `profiles` and is an admin. */
 async function requireAdmin() {
   const supabase = createServerClientSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
+
+  // 1) Must be signed in
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  // 2) Make sure a profiles row exists for THIS user.id (accounts can change UUIDs after resets)
+  //    We also store the email for convenience; role stays whatever it already is.
+  await supabase
+    .from("profiles")
+    .upsert({ id: user.id, email: user.email ?? null })
+    .select("id")
+    .maybeSingle();
+
+  // 3) Enforce admin role
   const { data: prof } = await supabase
     .from("profiles")
     .select("role")
@@ -18,6 +32,7 @@ async function requireAdmin() {
     .maybeSingle();
 
   if (!prof || prof.role !== "admin") redirect("/");
+
   return supabase;
 }
 
