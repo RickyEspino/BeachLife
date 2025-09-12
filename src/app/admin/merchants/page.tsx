@@ -2,38 +2,42 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerClientSupabase } from "@/lib/supabase/server";
-import RowActions from "./RowActions";
 
 export const dynamic = "force-dynamic";
 
-/** Ensure the current session user exists in `profiles` and is an admin. */
 async function requireAdmin() {
   const supabase = createServerClientSupabase();
 
-  // 1) Must be signed in
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  // 1) Auth
+  const { data: { user }, error: userErr } = await supabase.auth.getUser();
+  if (userErr) {
+    console.error("[admin gate] getUser error:", userErr);
+  }
+  if (!user) {
+    redirect("/login");
+  }
 
-  // 2) Make sure a profiles row exists for THIS user.id (accounts can change UUIDs after resets)
-  //    We also store the email for convenience; role stays whatever it already is.
-  await supabase
-    .from("profiles")
-    .upsert({ id: user.id, email: user.email ?? null })
-    .select("id")
-    .maybeSingle();
-
-  // 3) Enforce admin role
-  const { data: prof } = await supabase
+  // 2) Profile (RLS must allow reading own row)
+  const { data: prof, error: profErr } = await supabase
     .from("profiles")
     .select("role")
-    .eq("id", user.id)
+    .eq("id", user!.id)
     .maybeSingle();
 
-  if (!prof || prof.role !== "admin") redirect("/");
+  if (profErr) {
+    // Surface in logs rather than silently redirecting,
+    // so we can fix RLS/policies if they break again.
+    console.error("[admin gate] profiles select error:", profErr, "user_id:", user!.id);
+  }
 
-  return supabase;
+  if (!prof) {
+    // Render a 403-like page to make the issue visible
+    // (helps avoid infinite redirect loops when RLS blocks)
+    return { supabase, isAdmin: false as const, reason: "No profile row for current user" };
+  }
+
+  const isAdmin = prof.role === "admin";
+  return { supabase, isAdmin: isAdmin as const, reason: isAdmin ? null : "Not admin" };
 }
 
 type Merchant = {
@@ -47,13 +51,34 @@ type Merchant = {
 };
 
 export default async function AdminMerchantsPage() {
-  const supabase = await requireAdmin();
+  const gate = await requireAdmin();
 
-  const { data: merchants } = await supabase
+  if (!gate.isAdmin) {
+    // Friendly 403 to avoid confusing redirects
+    return (
+      <div className="max-w-xl p-6">
+        <h1 className="text-2xl font-bold mb-2">Access denied</h1>
+        <p className="text-white/70">
+          {gate.reason || "You don’t have permission to view this page."}
+        </p>
+        <p className="mt-4">
+          <Link href="/dashboard" className="underline">Go to Dashboard</Link>
+        </p>
+      </div>
+    );
+  }
+
+  const { supabase } = gate;
+
+  const { data: merchants, error } = await supabase
     .from("merchants")
     .select("id, name, slug, category, active, points_per_scan, updated_at")
     .order("updated_at", { ascending: false })
     .limit(100);
+
+  if (error) {
+    console.error("[admin list] merchants select error:", error);
+  }
 
   return (
     <div className="max-w-5xl p-6">
@@ -84,7 +109,7 @@ export default async function AdminMerchantsPage() {
               </tr>
             </thead>
             <tbody>
-              {merchants.map((m) => (
+              {merchants!.map((m) => (
                 <tr key={m.id} className="border-b border-white/5 last:border-none">
                   <td className="p-3">{m.name}</td>
                   <td className="p-3 font-mono">{m.slug}</td>
@@ -99,17 +124,8 @@ export default async function AdminMerchantsPage() {
                       <Link className="underline" href={`/merchants/${m.slug}`}>
                         View
                       </Link>
-                      {/* Client island controls the dialog state */}
-                      <RowActions
-                        merchant={{
-                          id: m.id,
-                          name: m.name,
-                          slug: m.slug,
-                          category: m.category,
-                          active: m.active,
-                          points_per_scan: m.points_per_scan,
-                        }}
-                      />
+                      {/* your RowActions island here */}
+                      {/* <RowActions merchant={{ ... }} /> */}
                     </div>
                   </td>
                 </tr>
