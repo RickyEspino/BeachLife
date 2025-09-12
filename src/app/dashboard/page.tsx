@@ -1,3 +1,4 @@
+// src/app/dashboard/page.tsx
 import { redirect } from "next/navigation";
 import { createServerClientSupabase } from "@/lib/supabase/server";
 import ProgressRing from "@/components/ProgressRing";
@@ -6,22 +7,29 @@ export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
   const supabase = createServerClientSupabase();
-  const { data: { user }, error: userErr } = await supabase.auth.getUser();
+
+  // 1) Get the current user (also sets cookies/session server-side)
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+
   if (userErr || !user) redirect("/login");
 
-  // Pull display_name from profiles
-  const { data: prof } = await supabase
+  // 2) Pull display_name from your profiles table for THIS user
+  const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name")
+    .select("display_name, email")
     .eq("id", user.id)
     .maybeSingle();
 
   const name =
-    prof?.display_name?.trim() ||
-    (user.user_metadata?.name as string | undefined) ||
+    profile?.display_name?.trim() ||
+    profile?.email?.split("@")[0] ||
     user.email?.split("@")[0] ||
     "Friend";
 
+  // 3) Read balance (safe even if row missing)
   const { data: bal } = await supabase
     .from("user_points_balance")
     .select("balance")
@@ -37,7 +45,9 @@ export default async function Dashboard() {
         <div>
           <div className="text-sm text-white/60">Welcome back</div>
           <h2 className="text-2xl font-bold">Hey, {name} 🌊</h2>
-          <p className="text-white/70 mt-2">You’re {remaining} points away from your next reward.</p>
+          <p className="text-white/70 mt-2">
+            You’re {remaining} points away from your next reward.
+          </p>
         </div>
         <div className="shrink-0">
           <ProgressRing value={points} />
