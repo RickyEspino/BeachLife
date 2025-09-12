@@ -8,28 +8,25 @@ export const dynamic = "force-dynamic";
 export default async function Dashboard() {
   const supabase = createServerClientSupabase();
 
-  // 1) Require auth
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
+  // 1) Make sure we have a user
+  const { data: { user }, error: userErr } = await supabase.auth.getUser();
   if (userErr || !user) redirect("/login");
 
-  // 2) Try to read display_name from profiles (RLS: id = auth.uid())
-  const { data: profile } = await supabase
+  // 2) Try to get display_name from profiles (RLS must allow: id = auth.uid())
+  const { data: prof, error: profErr } = await supabase
     .from("profiles")
     .select("display_name")
     .eq("id", user.id)
     .maybeSingle();
 
-  // 3) Nicest fallback order
+  // 3) Compute the friendly name with sensible fallbacks
   const name =
-    (profile?.display_name && profile.display_name.trim()) ||
-    (user.user_metadata as any)?.name ||
-    user.email?.split("@")[0] ||
+    prof?.display_name?.trim() ||
+    (typeof user.user_metadata?.display_name === "string" && user.user_metadata.display_name.trim()) ||
+    (user.email ? user.email.split("@")[0] : "") ||
     "Friend";
 
-  // 4) Read points balance
+  // 4) Read points balance (safe if missing)
   const { data: bal } = await supabase
     .from("user_points_balance")
     .select("balance")
