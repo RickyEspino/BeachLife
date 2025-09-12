@@ -1,6 +1,5 @@
 // src/app/dashboard/page.tsx
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import { noStore } from "next/cache";
 import { createServerClientSupabase } from "@/lib/supabase/server";
 import ProgressRing from "@/components/ProgressRing";
@@ -12,8 +11,6 @@ export const fetchCache = "force-no-store";
 export default async function Dashboard() {
   // Hard opt-out of caching for this render
   noStore();
-  // Touch headers to mark the segment dynamic for Next.js, too
-  headers();
 
   const supabase = createServerClientSupabase();
   const {
