@@ -1,6 +1,5 @@
 // src/app/dashboard/page.tsx
 import { redirect } from "next/navigation";
-import { noStore } from "next/cache";
 import { createServerClientSupabase } from "@/lib/supabase/server";
 import ProgressRing from "@/components/ProgressRing";
 
@@ -9,9 +8,6 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 export default async function Dashboard() {
-  // Hard opt-out of caching for this render
-  noStore();
-
   const supabase = createServerClientSupabase();
   const {
     data: { user },
@@ -20,6 +16,7 @@ export default async function Dashboard() {
 
   if (userErr || !user) redirect("/login");
 
+  // Prefer display_name; fall back to email username; then "Friend"
   const { data: profile } = await supabase
     .from("profiles")
     .select("display_name, email")
@@ -31,6 +28,7 @@ export default async function Dashboard() {
     (profile?.email ?? user.email ?? "").split("@")[0] ||
     "Friend";
 
+  // Points balance
   const { data: bal } = await supabase
     .from("user_points_balance")
     .select("balance")
