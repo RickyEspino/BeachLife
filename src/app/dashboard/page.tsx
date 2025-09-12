@@ -7,20 +7,34 @@ export const dynamic = "force-dynamic"; // ensure fresh balance per request
 
 export default async function Dashboard() {
   const supabase = createServerClientSupabase();
-  const { data: { user }, error: userErr } = await supabase.auth.getUser();
 
+  // 1) Ensure we have a signed-in user
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
   if (userErr || !user) redirect("/login");
 
-  const name = user.email?.split("@")[0] || "Friend";
+  // 2) Try to read the display name from profiles (RLS must allow user to read own row)
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("id", user.id)
+    .maybeSingle();
 
-  // read balance view; safe even if empty
+  const name =
+    profile?.display_name?.trim() ||
+    user.email?.split("@")[0] ||
+    "Friend";
+
+  // 3) Points balance (safe if row doesn’t exist yet)
   const { data: bal, error: balErr } = await supabase
     .from("user_points_balance")
     .select("balance")
     .eq("user_id", user.id)
     .maybeSingle();
 
-  const points = balErr ? 0 : (bal?.balance ?? 0);
+  const points = balErr ? 0 : bal?.balance ?? 0;
   const remaining = Math.max(500 - points, 0);
 
   return (
