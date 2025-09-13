@@ -1,41 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import QuickEditDialog from "./QuickEditDialog";
+import Link from "next/link";
 
-type Merchant = {
+type MerchantMinimal = {
   id: string;
-  name: string;
   slug: string;
-  category: string;
-  active: boolean;
-  points_per_scan: number;
 };
 
-export default function RowActions({ merchant }: { merchant: Merchant }) {
-  const [open, setOpen] = useState(false);
-  const router = useRouter();
-
+export default function RowActions({ merchant }: { merchant: MerchantMinimal }) {
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="underline"
-      >
+    <div className="flex items-center gap-3">
+      <Link className="underline" href={`/merchants/${merchant.slug}`}>
+        View
+      </Link>
+      <Link className="underline" href={`/admin/merchants/${merchant.id}/edit`}>
         Edit
-      </button>
-
-      <QuickEditDialog
-        open={open}
-        onClose={() => setOpen(false)}
-        merchant={merchant}
-        onSaved={() => {
-          // Refresh the table after save
-          router.refresh();
-        }}
-      />
-    </>
+      </Link>
+    </div>
   );
 }
