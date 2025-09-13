@@ -32,7 +32,7 @@ async function requireMerchantUser() {
     redirect("/dashboard");
   }
 
-  // Fetch merchant names for those IDs
+  // Fetch merchant names
   const ids = memberships.map((m) => m.merchant_id);
   const { data: merchants } = await supabase
     .from("merchants")
@@ -45,13 +45,13 @@ async function requireMerchantUser() {
       return { id: String(m.id), name: String(m.name ?? "Merchant"), role: role as "owner" | "staff" };
     }) ?? [];
 
-  return { supabase, userId: user.id, merchants: list };
+  return { supabase, userId: user.id as string, merchants: list };
 }
 
 /** Server action: create a 2-minute earn token and redirect to the QR page. */
 export async function createToken(formData: FormData): Promise<void> {
   "use server";
-  const { supabase, merchants } = await requireMerchantUser();
+  const { supabase, merchants, userId } = await requireMerchantUser();
 
   const merchantId = String(formData.get("merchant_id") ?? "");
   const amountRaw = String(formData.get("amount") ?? "").trim();
@@ -59,40 +59,33 @@ export async function createToken(formData: FormData): Promise<void> {
 
   // Basic guards
   const allowed = merchants.some((m) => m.id === merchantId);
-  if (!allowed) {
-    redirect("/merchant/register?error=not_allowed");
-  }
-  if (!Number.isFinite(amount) || amount <= 0) {
-    redirect("/merchant/register?error=invalid_amount");
-  }
+  if (!allowed) redirect("/merchant/register?error=not_allowed");
+  if (!Number.isFinite(amount) || amount <= 0) redirect("/merchant/register?error=invalid_amount");
 
-  // Convert dollars -> points (customize as needed)
-  const points = Math.round(amount * 10);
+  // Convert to cents/points
+  const amount_cents = Math.round(amount * 100);
+  const points = Math.round(amount * 10); // $1 -> 10 points
 
-  // Create short-lived token (2 minutes)
   const { data: tokenRow, error } = await supabase
     .from("earn_tokens")
     .insert({
       code: crypto.randomUUID(),
       merchant_id: merchantId,
+      created_by: userId,
+      amount_cents,
       points,
       expires_at: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
     })
     .select("code")
     .maybeSingle();
 
-  if (!tokenRow || error) {
-    redirect("/merchant/register?error=token_create_failed");
-  }
+  if (!tokenRow || error) redirect("/merchant/register?error=token_create_failed");
 
-  // Go render the QR for this code
   redirect(`/merchant/register/qr/${tokenRow.code}`);
 }
 
 export default async function RegisterSalePage() {
   const { merchants } = await requireMerchantUser();
-
-  // If user has exactly one merchant, preselect it.
   const onlyOne = merchants.length === 1 ? merchants[0].id : "";
 
   return (

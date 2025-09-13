@@ -1,19 +1,10 @@
 // src/app/merchant/page.tsx
 import { redirect } from "next/navigation";
-import { headers as nextHeaders } from "next/headers";
 import { createServerClientSupabase } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
-
-/** Resolve current origin (works on Vercel and locally). */
-async function getOrigin(): Promise<string> {
-  const h = await nextHeaders();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 /** Gate: only owners/staff of at least one merchant can access. */
 async function requireMerchantRole() {
@@ -21,6 +12,7 @@ async function requireMerchantRole() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
   if (!user) redirect("/login?redirect_to=/merchant");
 
   // Find first merchant the user belongs to (owner or staff)
@@ -32,34 +24,34 @@ async function requireMerchantRole() {
     .limit(1);
 
   const first = mu?.[0];
-  if (!first) {
-    redirect("/dashboard");
-  }
+  if (!first) redirect("/dashboard");
 
-  return { supabase, userId: user!.id, merchantId: first.merchant_id as string };
+  return { supabase, userId: user.id as string, merchantId: first.merchant_id as string };
 }
 
 /** Server action: create a short-lived earn token for a given dollar amount, then redirect to QR screen. */
 export async function generateEarnToken(formData: FormData) {
   "use server";
-  const { supabase, merchantId } = await requireMerchantRole();
+  const { supabase, merchantId, userId } = await requireMerchantRole();
 
   const dollarsRaw = String(formData.get("amount") ?? "").trim();
   const dollars = Number(dollarsRaw);
   if (!Number.isFinite(dollars) || dollars <= 0) {
-    // Simple fallback: bounce back to merchant console (you could add a toast via search params if you like)
     redirect("/merchant?error=invalid_amount");
   }
 
-  // Convert dollars -> points. Adjust as needed (e.g., $1 = 10 points).
-  const points = Math.round(dollars * 10);
+  // Convert dollars -> cents & points (adjust conversion as needed).
+  const amount_cents = Math.round(dollars * 100);
+  const points = Math.round(dollars * 10); // $1 -> 10 points
 
-  // Insert token valid for 2 minutes
+  // Insert token valid for 2 minutes. IMPORTANT: include created_by and amount_cents (your table requires them).
   const { data: tokenRow, error } = await supabase
     .from("earn_tokens")
     .insert({
       code: crypto.randomUUID(),
       merchant_id: merchantId,
+      created_by: userId,
+      amount_cents,
       points,
       expires_at: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
     })
@@ -70,22 +62,18 @@ export async function generateEarnToken(formData: FormData) {
     redirect("/merchant?error=token_create_failed");
   }
 
-  // Go to the QR render page (that page will build the QR for /claim/{code})
   redirect(`/merchant/register/qr/${tokenRow.code}`);
 }
 
 export default async function MerchantConsole() {
   const { supabase, merchantId } = await requireMerchantRole();
 
-  // Fetch merchant name (optional, nice for the header)
+  // Fetch merchant name (optional)
   const { data: merchant } = await supabase
     .from("merchants")
     .select("name")
     .eq("id", merchantId)
     .maybeSingle();
-
-  // Touch origin to ensure headers() await path is validated (not strictly needed here)
-  await getOrigin();
 
   return (
     <div className="max-w-xl p-6 space-y-6">

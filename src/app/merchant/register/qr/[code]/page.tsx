@@ -6,82 +6,50 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-// Use a configured base URL so QR works on any device.
-function getBaseUrl() {
-  const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (env) return env.replace(/\/+$/, "");
-  // Fallback to your prod domain
-  return "https://beach-life.vercel.app";
-}
-
 export default async function QRPage({ params }: { params: { code: string } }) {
   const supabase = createServerClientSupabase();
 
-  // Make sure the token exists and is valid
-  const { data: token } = await supabase
+  // Validate token exists & not redeemed/expired
+  const { data: t } = await supabase
     .from("earn_tokens")
     .select("code, expires_at, redeemed_at")
     .eq("code", params.code)
     .maybeSingle();
 
-  if (!token) {
-    notFound();
-  }
+  if (!t) notFound();
 
-  const now = Date.now();
-  const expiresAtMs = token.expires_at ? new Date(token.expires_at).getTime() : 0;
-  const isExpired = expiresAtMs <= now;
-  const isRedeemed = !!token.redeemed_at;
+  const expired = t.expires_at && new Date(t.expires_at).getTime() < Date.now();
+  const used = Boolean(t.redeemed_at);
+  if (expired || used) notFound();
 
-  if (isExpired || isRedeemed) {
-    return (
-      <div className="max-w-md mx-auto p-6 text-center space-y-3">
-        <h1 className="text-2xl font-bold">QR not available</h1>
-        <p className="text-white/70">
-          {isRedeemed ? "This code was already redeemed." : "This code has expired."}
-        </p>
-        <a href="/merchant/register" className="inline-block mt-2 rounded-xl border border-white/15 px-4 py-2">
-          Create a new code
-        </a>
-      </div>
-    );
-  }
+  // URL the customer should visit
+  const claimUrl = `/claim/${params.code}`;
 
-  const base = getBaseUrl();
-  const claimUrl = `${base}/claim/${encodeURIComponent(token.code)}`;
-
-  // Generate QR via a hosted image endpoint (no extra npm deps)
-  // You can switch to any QR provider you prefer.
-  const qrPngUrl = `https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(
+  // Use a simple external QR service to avoid adding a build dep:
+  const qrPng = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(
     claimUrl
   )}`;
 
-  const secondsLeft = Math.max(0, Math.floor((expiresAtMs - now) / 1000));
-
   return (
-    <div className="max-w-md mx-auto p-6 text-center space-y-5">
-      <h1 className="text-2xl font-bold">Have the customer scan this</h1>
+    <div className="max-w-md mx-auto p-6 space-y-4 text-center">
+      <h1 className="text-2xl font-bold">Show this QR to the customer</h1>
+      <p className="text-white/70 text-sm">
+        Expires about 2 minutes after it was created. One-time use only.
+      </p>
 
-      <div className="mx-auto rounded-2xl bg-white p-3 w-fit shadow-soft">
+      <div className="flex justify-center">
         <img
-          src={qrPngUrl}
-          alt="One-time QR code"
-          className="block w-[360px] h-[360px]"
-          width={360}
-          height={360}
+          src={qrPng}
+          alt="QR Code"
+          width={256}
+          height={256}
+          className="rounded-xl bg-white p-2"
         />
       </div>
 
-      <div className="text-white/70">
-        Expires in <span className="font-semibold">{secondsLeft}</span> seconds.
+      <div className="text-sm text-white/60">
+        Or share this link directly: <span className="underline break-all">{claimUrl}</span>
       </div>
-
-      <div className="text-sm text-white/60 break-all">
-        Scanning opens: <span className="font-mono">{claimUrl}</span>
-      </div>
-
-      {/* After it expires, kick back to the register page */}
-      <meta httpEquiv="refresh" content={`${secondsLeft};url=/merchant/register`} />
     </div>
   );
 }
