@@ -7,24 +7,53 @@ export const dynamic = "force-dynamic"; // ensure fresh balance per request
 
 export default async function Dashboard() {
   const supabase = createServerClientSupabase();
-  const { data: { user }, error: userErr } = await supabase.auth.getUser();
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
 
   if (userErr || !user) redirect("/login");
 
-  const name = user.email?.split("@")[0] || "Friend";
+  // --- Fetch profile (display_name) ---
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name, email")
+    .eq("id", user.id)
+    .maybeSingle();
 
-  // read balance view; safe even if empty
-  const { data: bal, error: balErr } = await supabase
+  const name =
+    (profile?.display_name ?? "").trim() ||
+    (profile?.email ?? user.email ?? "").split("@")[0] ||
+    "Friend";
+
+  // --- Points balance ---
+  const { data: bal } = await supabase
     .from("user_points_balance")
     .select("balance")
     .eq("user_id", user.id)
     .maybeSingle();
 
-  const points = balErr ? 0 : (bal?.balance ?? 0);
+  const points = bal?.balance ?? 0;
   const remaining = Math.max(500 - points, 0);
+
+  const DEBUG_DASHBOARD = false; // set true if you want the debug box again
 
   return (
     <div className="grid gap-6">
+      {DEBUG_DASHBOARD && (
+        <div className="rounded-xl border border-white/10 p-4 text-xs text-white/80 bg-[var(--card,#0b0b0c)]">
+          <div className="font-semibold mb-2">Debug</div>
+          <div>Env Supabase URL: <code>{process.env.NEXT_PUBLIC_SUPABASE_URL}</code></div>
+          <div>User ID: <code>{user.id}</code></div>
+          <div>User Email: <code>{user.email}</code></div>
+          <div>Profile row:</div>
+          <pre className="whitespace-pre-wrap break-words">
+            {JSON.stringify(profile, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      {/* Existing points/progress card */}
       <section className="rounded-2xl bg-[var(--card)] shadow-soft p-5 flex items-center justify-between">
         <div>
           <div className="text-sm text-white/60">Welcome back</div>
@@ -36,6 +65,12 @@ export default async function Dashboard() {
         <div className="shrink-0">
           <ProgressRing value={points} />
         </div>
+      </section>
+
+      {/* NEW: name-only card */}
+      <section className="rounded-2xl bg-[var(--card)] shadow-soft p-6">
+        <div className="text-sm text-white/60">User</div>
+        <div className="mt-1 text-3xl font-bold tracking-tight">{name}</div>
       </section>
     </div>
   );
