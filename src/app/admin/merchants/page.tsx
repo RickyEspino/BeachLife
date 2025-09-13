@@ -2,8 +2,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerClientSupabase } from "@/lib/supabase/server";
-
-// If you have the RowActions client island (for Quick Edit dialog), keep this:
 import RowActions from "./RowActions";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +11,6 @@ async function requireAdmin() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
   if (!user) redirect("/login");
 
   const { data: prof } = await supabase
@@ -23,7 +20,6 @@ async function requireAdmin() {
     .maybeSingle();
 
   if (!prof || prof.role !== "admin") redirect("/");
-
   return supabase;
 }
 
@@ -90,30 +86,8 @@ export default async function AdminMerchantsPage() {
                       <Link className="underline" href={`/merchants/${m.slug}`}>
                         View
                       </Link>
-
-                      {/* New: direct link to the full edit page */}
-                      <Link
-                        className="underline"
-                        href={`/admin/merchants/${m.id}/edit`}
-                      >
-                        Edit
-                      </Link>
-
-                      {/* Optional: keep your client-side Quick Edit dialog controls */}
-                      {/*
-                        RowActions expects:
-                        { id, name, slug, category, active, points_per_scan }
-                      */}
-                      <RowActions
-                        merchant={{
-                          id: m.id,
-                          name: m.name,
-                          slug: m.slug,
-                          category: m.category,
-                          active: m.active,
-                          points_per_scan: m.points_per_scan,
-                        }}
-                      />
+                      {/* Pass only the props RowActions expects */}
+                      <RowActions merchant={{ id: m.id, slug: m.slug }} />
                     </div>
                   </td>
                 </tr>
