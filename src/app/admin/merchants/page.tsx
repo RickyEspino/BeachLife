@@ -3,33 +3,28 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerClientSupabase } from "@/lib/supabase/server";
 
+// If you have the RowActions client island (for Quick Edit dialog), keep this:
+import RowActions from "./RowActions";
+
 export const dynamic = "force-dynamic";
 
 async function requireAdmin() {
   const supabase = createServerClientSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  // 1) Auth
-  const { data: { user }, error: userErr } = await supabase.auth.getUser();
-  if (userErr) console.error("[admin gate] getUser error:", userErr);
   if (!user) redirect("/login");
 
-  // 2) Profile
-  const { data: prof, error: profErr } = await supabase
+  const { data: prof } = await supabase
     .from("profiles")
     .select("role")
-    .eq("id", user!.id)
+    .eq("id", user.id)
     .maybeSingle();
 
-  if (profErr) {
-    console.error("[admin gate] profiles select error:", profErr, "user_id:", user!.id);
-  }
+  if (!prof || prof.role !== "admin") redirect("/");
 
-  if (!prof) {
-    return { supabase, isAdmin: false, reason: "No profile row for current user" as string | null };
-  }
-
-  const isAdmin = prof.role === "admin";
-  return { supabase, isAdmin, reason: isAdmin ? null : "Not admin" as string | null };
+  return supabase;
 }
 
 type Merchant = {
@@ -43,33 +38,13 @@ type Merchant = {
 };
 
 export default async function AdminMerchantsPage() {
-  const gate = await requireAdmin();
+  const supabase = await requireAdmin();
 
-  if (!gate.isAdmin) {
-    return (
-      <div className="max-w-xl p-6">
-        <h1 className="text-2xl font-bold mb-2">Access denied</h1>
-        <p className="text-white/70">
-          {gate.reason || "You don’t have permission to view this page."}
-        </p>
-        <p className="mt-4">
-          <Link href="/dashboard" className="underline">Go to Dashboard</Link>
-        </p>
-      </div>
-    );
-  }
-
-  const { supabase } = gate;
-
-  const { data: merchants, error } = await supabase
+  const { data: merchants } = await supabase
     .from("merchants")
     .select("id, name, slug, category, active, points_per_scan, updated_at")
     .order("updated_at", { ascending: false })
     .limit(100);
-
-  if (error) {
-    console.error("[admin list] merchants select error:", error);
-  }
 
   return (
     <div className="max-w-5xl p-6">
@@ -100,7 +75,7 @@ export default async function AdminMerchantsPage() {
               </tr>
             </thead>
             <tbody>
-              {merchants!.map((m) => (
+              {merchants.map((m) => (
                 <tr key={m.id} className="border-b border-white/5 last:border-none">
                   <td className="p-3">{m.name}</td>
                   <td className="p-3 font-mono">{m.slug}</td>
@@ -112,8 +87,33 @@ export default async function AdminMerchantsPage() {
                   </td>
                   <td className="p-3">
                     <div className="flex items-center gap-3">
-                      <Link className="underline" href={`/merchants/${m.slug}`}>View</Link>
-                      {/* <RowActions merchant={{ ... }} /> */}
+                      <Link className="underline" href={`/merchants/${m.slug}`}>
+                        View
+                      </Link>
+
+                      {/* New: direct link to the full edit page */}
+                      <Link
+                        className="underline"
+                        href={`/admin/merchants/${m.id}/edit`}
+                      >
+                        Edit
+                      </Link>
+
+                      {/* Optional: keep your client-side Quick Edit dialog controls */}
+                      {/*
+                        RowActions expects:
+                        { id, name, slug, category, active, points_per_scan }
+                      */}
+                      <RowActions
+                        merchant={{
+                          id: m.id,
+                          name: m.name,
+                          slug: m.slug,
+                          category: m.category,
+                          active: m.active,
+                          points_per_scan: m.points_per_scan,
+                        }}
+                      />
                     </div>
                   </td>
                 </tr>
