@@ -313,7 +313,7 @@ export default async function EditMerchantPage({
 
         {/* Current members */}
         {!rows.length ? (
-          <p className="text-white/70">No members yet.</p>
+          <p className="text-white/70">No members yet..</p>
         ) : (
           <ul className="divide-y divide-white/10 rounded-2xl border border-white/10">
             {rows.map((row) => {
