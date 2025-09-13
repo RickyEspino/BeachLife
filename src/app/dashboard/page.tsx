@@ -8,73 +8,52 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-type ProfileRow = {
-  display_name: string | null;
-  email: string | null;
-  role: "admin" | "user" | string | null;
-};
-
-type MembershipRow = {
-  merchant_id: string;
-  role: "owner" | "staff" | string;
-  merchants: { name: string; slug: string } | null;
-};
-
 export default async function Dashboard() {
   const supabase = createServerClientSupabase();
 
+  // 1) Auth
   const {
     data: { user },
     error: userErr,
   } = await supabase.auth.getUser();
-
   if (userErr || !user) redirect("/login");
 
-  // Profile for name + admin role
+  // 2) Profile name (prefer display_name)
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, email, role")
+    .select("display_name, email")
     .eq("id", user.id)
-    .maybeSingle<ProfileRow>();
+    .maybeSingle();
 
   const name =
     (profile?.display_name ?? "").trim() ||
     (profile?.email ?? user.email ?? "").split("@")[0] ||
     "Friend";
 
-  // Points summary
+  // 3) Points balance
   const { data: bal } = await supabase
     .from("user_points_balance")
     .select("balance")
     .eq("user_id", user.id)
-    .maybeSingle<{ balance: number }>();
+    .maybeSingle();
 
   const points = bal?.balance ?? 0;
   const remaining = Math.max(500 - points, 0);
 
-  // Merchant memberships (owner/staff)
-  const { data: memberships } = await supabase
+  // 4) Does user belong to any merchant (owner/staff)?
+  // We only need a boolean, so select minimal fields and limit 1.
+  const { data: membership } = await supabase
     .from("merchant_users")
-    .select(
-      `
-      merchant_id,
-      role,
-      merchants!inner (
-        name,
-        slug
-      )
-    `
-    )
+    .select("merchant_id, role")
     .eq("user_id", user.id)
     .in("role", ["owner", "staff"])
-    .returns<MembershipRow[]>();
+    .limit(1);
 
-  const isAdmin = profile?.role === "admin";
-  const isMerchantUser = (memberships?.length ?? 0) > 0;
+  const canAccessMerchantConsole = !!(membership && membership.length > 0);
 
   return (
     <div className="grid gap-6">
-      {/* Greeting + points */}
+      {/* Welcome / progress */}
       <section className="rounded-2xl bg-[var(--card)] shadow-soft p-5 flex items-center justify-between">
         <div>
           <div className="text-sm text-white/60">Welcome back</div>
@@ -94,51 +73,22 @@ export default async function Dashboard() {
         <div className="mt-1 text-3xl font-bold tracking-tight">{name}</div>
       </section>
 
-      {/* Admin link (admins only) */}
-      {isAdmin && (
-        <section className="rounded-2xl bg-[var(--card)] shadow-soft p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-white/60">Admin</div>
-              <div className="mt-1 font-semibold">Admin Console</div>
-            </div>
-            <Link
-              href="/admin"
-              className="rounded-xl bg-sunset px-4 py-2 font-semibold"
-            >
-              Open Admin
-            </Link>
+      {/* Merchant Console link (only for owners/staff) */}
+      {canAccessMerchantConsole && (
+        <section className="rounded-2xl bg-[var(--card)] shadow-soft p-6 flex items-center justify-between">
+          <div>
+            <div className="text-sm text-white/60">Merchant tools</div>
+            <h3 className="text-xl font-semibold mt-1">Merchant Console</h3>
+            <p className="text-white/70 mt-1">
+              Manage your merchant locations, staff, and rewards.
+            </p>
           </div>
-        </section>
-      )}
-
-      {/* Merchant link (owner/staff only) */}
-      {isMerchantUser && (
-        <section className="rounded-2xl bg-[var(--card)] shadow-soft p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-white/60">Merchants</div>
-              <div className="mt-1 font-semibold">Merchant Console</div>
-              {/* Optional: show a small list of merchants they belong to */}
-              <ul className="mt-2 text-white/80 text-sm list-disc pl-5">
-                {(memberships ?? []).slice(0, 4).map((m) => (
-                  <li key={`${m.merchant_id}-${m.role}`}>
-                    {m.merchants?.name ?? "Merchant"}{" "}
-                    <span className="text-white/50">({m.role})</span>
-                  </li>
-                ))}
-                {(memberships?.length ?? 0) > 4 && (
-                  <li className="text-white/50">and more…</li>
-                )}
-              </ul>
-            </div>
-            <Link
-              href="/merchant"
-              className="rounded-xl bg-seafoam px-4 py-2 font-semibold"
-            >
-              Open Console
-            </Link>
-          </div>
+          <Link
+            href="/merchant"
+            className="rounded-xl bg-seafoam px-4 py-2 font-semibold"
+          >
+            Open Console
+          </Link>
         </section>
       )}
     </div>
