@@ -33,25 +33,25 @@ async function requireMerchantRole() {
 
   const first = mu?.[0];
   if (!first) {
-    // Not permitted
     redirect("/dashboard");
   }
 
-  return { supabase, userId: user.id, merchantId: first.merchant_id as string };
+  return { supabase, userId: user!.id, merchantId: first.merchant_id as string };
 }
 
-/** Server action: create a short-lived earn token for a given dollar amount. */
-export async function generateEarnToken(_: unknown, formData: FormData) {
+/** Server action: create a short-lived earn token for a given dollar amount, then redirect to QR screen. */
+export async function generateEarnToken(formData: FormData) {
   "use server";
   const { supabase, merchantId } = await requireMerchantRole();
 
   const dollarsRaw = String(formData.get("amount") ?? "").trim();
   const dollars = Number(dollarsRaw);
   if (!Number.isFinite(dollars) || dollars <= 0) {
-    return { ok: false, message: "Enter a valid dollar amount greater than 0." };
+    // Simple fallback: bounce back to merchant console (you could add a toast via search params if you like)
+    redirect("/merchant?error=invalid_amount");
   }
 
-  // Convert dollars -> points. Adjust as needed (e.g., 1$ = 10 points).
+  // Convert dollars -> points. Adjust as needed (e.g., $1 = 10 points).
   const points = Math.round(dollars * 10);
 
   // Insert token valid for 2 minutes
@@ -67,15 +67,11 @@ export async function generateEarnToken(_: unknown, formData: FormData) {
     .maybeSingle();
 
   if (!tokenRow || error) {
-    return { ok: false, message: error?.message ?? "Could not create QR token." };
+    redirect("/merchant?error=token_create_failed");
   }
 
-  const origin = await getOrigin();
-  const qrLink = `${origin}/claim/${tokenRow.code}`;
-  // Send staff to a page that renders the QR for this code
-  const showQr = `${origin}/merchant/register/qr/${tokenRow.code}`;
-
-  return { ok: true, message: "Token created", qrLink, showQr };
+  // Go to the QR render page (that page will build the QR for /claim/{code})
+  redirect(`/merchant/register/qr/${tokenRow.code}`);
 }
 
 export default async function MerchantConsole() {
@@ -87,6 +83,9 @@ export default async function MerchantConsole() {
     .select("name")
     .eq("id", merchantId)
     .maybeSingle();
+
+  // Touch origin to ensure headers() await path is validated (not strictly needed here)
+  await getOrigin();
 
   return (
     <div className="max-w-xl p-6 space-y-6">
@@ -105,7 +104,9 @@ export default async function MerchantConsole() {
             className="mt-1 w-full rounded-xl bg-transparent border border-white/10 p-3"
             required
           />
-          <p className="text-xs text-white/50 mt-1">We’ll convert dollars → points and create a 2-minute QR.</p>
+          <p className="text-xs text-white/50 mt-1">
+            We’ll convert dollars → points and create a 2-minute QR.
+          </p>
         </div>
 
         <button className="rounded-xl bg-seafoam px-4 py-2 font-semibold">
@@ -113,7 +114,6 @@ export default async function MerchantConsole() {
         </button>
       </form>
 
-      {/* Small help text */}
       <div className="text-sm text-white/60">
         After you generate the QR, ask the customer to scan it with their camera app. They’ll be taken
         to the app to claim points. The code auto-expires after 2 minutes and can only be redeemed once.
