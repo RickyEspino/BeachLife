@@ -1,252 +1,123 @@
 // src/app/merchant/page.tsx
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
+import { headers as nextHeaders } from "next/headers";
 import { createServerClientSupabase } from "@/lib/supabase/server";
 
-// Always render fresh (no caching); staff needs live data
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-type Membership = {
-  merchant_id: string;
-  role: "owner" | "staff";
-  merchants: {
-    id: string;
-    name: string;
-    slug: string;
-    points_per_scan: number | null;
-  } | null;
-};
-
-function getOrigin(): string {
-  const h = headers();
+/** Resolve current origin (works on Vercel and locally). */
+async function getOrigin(): Promise<string> {
+  const h = await nextHeaders();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? "https";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   return `${proto}://${host}`;
 }
 
-/** Server Action: create a 2-minute earn token and bounce back with ?code=... */
-export async function createEarnToken(_: unknown, formData: FormData) {
-  "use server";
-
+/** Gate: only owners/staff of at least one merchant can access. */
+async function requireMerchantRole() {
   const supabase = createServerClientSupabase();
-
-  // Gate: must be authenticated
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) {
-    redirect("/login");
-  }
+  if (!user) redirect("/login?redirect_to=/merchant");
 
-  const merchant_id = String(formData.get("merchant_id") || "");
-  const amountStr = String(formData.get("amount") || "").trim();
-  const amount = Number(amountStr);
-
-  if (!merchant_id || Number.isNaN(amount) || amount <= 0) {
-    redirect(`/merchant?err=bad_input`);
-  }
-
-  // Check membership
-  const { data: membership } = await supabase
+  // Find first merchant the user belongs to (owner or staff)
+  const { data: mu } = await supabase
     .from("merchant_users")
-    .select("merchant_id, role, merchants ( id, name, slug, points_per_scan )")
+    .select("merchant_id, role")
     .eq("user_id", user.id)
-    .eq("merchant_id", merchant_id)
-    .maybeSingle<Membership>();
+    .in("role", ["owner", "staff"])
+    .limit(1);
 
-  if (!membership) {
-    redirect(`/merchant?err=forbidden`);
+  const first = mu?.[0];
+  if (!first) {
+    // Not permitted
+    redirect("/dashboard");
   }
 
-  const pps = membership.merchants?.points_per_scan ?? 0;
-  // Conversion: points_per_scan = points per $1
-  const points = Math.max(Math.round(amount * (pps > 0 ? pps : 0)), 0);
-
-  if (points <= 0) {
-    redirect(`/merchant?err=zero_points`);
-  }
-
-  // Generate a code on the server
-  const code = crypto.randomUUID();
-  const expires = new Date(Date.now() + 2 * 60 * 1000).toISOString(); // +2 minutes
-
-  const { error: insErr } = await supabase.from("earn_tokens").insert({
-    code,
-    merchant_id,
-    points,
-    expires_at: expires,
-  });
-
-  if (insErr) {
-    redirect(`/merchant?err=insert_failed`);
-  }
-
-  // Redirect back to the console, showing the QR for this code
-  redirect(`/merchant?merchant=${merchant_id}&code=${code}`);
+  return { supabase, userId: user.id, merchantId: first.merchant_id as string };
 }
 
-export default async function MerchantConsole({
-  searchParams,
-}: {
-  searchParams: { merchant?: string; code?: string; err?: string };
-}) {
-  const supabase = createServerClientSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+/** Server action: create a short-lived earn token for a given dollar amount. */
+export async function generateEarnToken(_: unknown, formData: FormData) {
+  "use server";
+  const { supabase, merchantId } = await requireMerchantRole();
 
-  if (!user) redirect("/login");
-
-  // Fetch all memberships for this user
-  const { data: memberships } = await supabase
-    .from("merchant_users")
-    .select("merchant_id, role, merchants ( id, name, slug, points_per_scan )")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: true }) // remove if your table lacks this column
-    .returns<Membership[]>();
-
-  if (!memberships || memberships.length === 0) {
-    return (
-      <div className="max-w-2xl p-6">
-        <h1 className="text-2xl font-bold mb-2">Merchant Console</h1>
-        <p className="text-white/70">
-          You don’t appear to be linked to any merchant. Ask an owner or admin to add you.
-        </p>
-      </div>
-    );
+  const dollarsRaw = String(formData.get("amount") ?? "").trim();
+  const dollars = Number(dollarsRaw);
+  if (!Number.isFinite(dollars) || dollars <= 0) {
+    return { ok: false, message: "Enter a valid dollar amount greater than 0." };
   }
 
-  const selectedId =
-    searchParams.merchant && memberships.some((m) => m.merchant_id === searchParams.merchant)
-      ? searchParams.merchant
-      : memberships[0].merchant_id;
+  // Convert dollars -> points. Adjust as needed (e.g., 1$ = 10 points).
+  const points = Math.round(dollars * 10);
 
-  const selected = memberships.find((m) => m.merchant_id === selectedId)!;
-  const merchantName = selected.merchants?.name ?? "Merchant";
-  const pps = selected.merchants?.points_per_scan ?? 0;
+  // Insert token valid for 2 minutes
+  const { data: tokenRow, error } = await supabase
+    .from("earn_tokens")
+    .insert({
+      code: crypto.randomUUID(),
+      merchant_id: merchantId,
+      points,
+      expires_at: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+    })
+    .select("code")
+    .maybeSingle();
 
-  const origin = getOrigin();
-  const redeemPathBase = "/claim"; // ← use your existing claim route
-  const code = searchParams.code || null;
-  const redeemUrl = code ? `${origin}${redeemPathBase}/${code}` : null;
+  if (!tokenRow || error) {
+    return { ok: false, message: error?.message ?? "Could not create QR token." };
+  }
+
+  const origin = await getOrigin();
+  const qrLink = `${origin}/claim/${tokenRow.code}`;
+  // Send staff to a page that renders the QR for this code
+  const showQr = `${origin}/merchant/register/qr/${tokenRow.code}`;
+
+  return { ok: true, message: "Token created", qrLink, showQr };
+}
+
+export default async function MerchantConsole() {
+  const { supabase, merchantId } = await requireMerchantRole();
+
+  // Fetch merchant name (optional, nice for the header)
+  const { data: merchant } = await supabase
+    .from("merchants")
+    .select("name")
+    .eq("id", merchantId)
+    .maybeSingle();
 
   return (
-    <div className="max-w-2xl p-6 space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Merchant Console</h1>
-        {/* Quick switcher when user linked to multiple merchants */}
-        {memberships.length > 1 && (
-          <form
-            action="/merchant"
-            method="get"
-            className="flex items-center gap-2 text-sm"
-          >
-            <label className="text-white/70">Merchant</label>
-            <select
-              name="merchant"
-              defaultValue={selectedId}
-              className="rounded-xl bg-transparent border border-white/10 p-2"
-            >
-              {memberships.map((m) => (
-                <option key={m.merchant_id} value={m.merchant_id}>
-                  {m.merchants?.name ?? m.merchant_id.slice(0, 8)}
-                </option>
-              ))}
-            </select>
-            <button className="rounded-xl border border-white/10 px-3 py-1">
-              Switch
-            </button>
-          </form>
-        )}
+    <div className="max-w-xl p-6 space-y-6">
+      <h1 className="text-2xl font-bold">
+        Merchant Console{merchant?.name ? ` — ${merchant.name}` : ""}
+      </h1>
+
+      {/* Register-style card */}
+      <form action={generateEarnToken} className="rounded-2xl border border-white/10 p-5 space-y-3">
+        <div>
+          <label className="text-sm text-white/70">Purchase amount (USD)</label>
+          <input
+            name="amount"
+            inputMode="decimal"
+            placeholder="e.g. 12.50"
+            className="mt-1 w-full rounded-xl bg-transparent border border-white/10 p-3"
+            required
+          />
+          <p className="text-xs text-white/50 mt-1">We’ll convert dollars → points and create a 2-minute QR.</p>
+        </div>
+
+        <button className="rounded-xl bg-seafoam px-4 py-2 font-semibold">
+          Generate QR
+        </button>
+      </form>
+
+      {/* Small help text */}
+      <div className="text-sm text-white/60">
+        After you generate the QR, ask the customer to scan it with their camera app. They’ll be taken
+        to the app to claim points. The code auto-expires after 2 minutes and can only be redeemed once.
       </div>
-
-      <section className="rounded-2xl bg-[var(--card)] shadow-soft p-5 space-y-3">
-        <div className="text-sm text-white/60">
-          {merchantName} • Role: <span className="font-mono">{selected.role}</span>
-        </div>
-        <div className="text-white/70 text-sm">
-          Current conversion: <span className="font-semibold">{pps}</span> points per $1.00
-        </div>
-
-        {/* Earn form */}
-        <form action={createEarnToken} className="grid gap-3 mt-2">
-          <input type="hidden" name="merchant_id" value={selectedId} />
-          <label className="grid gap-1">
-            <span className="text-sm text-white/80">Purchase Amount (USD)</span>
-            <input
-              name="amount"
-              type="number"
-              min={0.01}
-              step="0.01"
-              placeholder="e.g. 12.50"
-              className="rounded-xl bg-transparent border border-white/10 p-3"
-              required
-            />
-          </label>
-          <button className="rounded-xl bg-seafoam px-4 py-2 font-semibold w-max">
-            Generate QR (valid 2 minutes)
-          </button>
-        </form>
-
-        {searchParams.err && (
-          <p className="text-sm text-red-400 mt-2">
-            {searchParams.err === "bad_input" && "Please enter a valid amount."}
-            {searchParams.err === "forbidden" && "You are not authorized for that merchant."}
-            {searchParams.err === "zero_points" &&
-              "That amount yields 0 points with the current conversion."}
-            {searchParams.err === "insert_failed" && "Could not create token. Try again."}
-          </p>
-        )}
-      </section>
-
-      {/* QR panel (only when a code is present) */}
-      {code && redeemUrl && (
-        <section className="rounded-2xl bg-[var(--card)] shadow-soft p-5 space-y-4 border border-white/10">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">One-time QR</h2>
-            <span className="text-sm text-white/60">Expires in ~2 minutes</span>
-          </div>
-
-          <div className="flex items-center gap-6">
-            <div className="rounded-2xl overflow-hidden border border-white/10">
-              {/* Hosted QR generator; no dependency needed */}
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-                  redeemUrl
-                )}`}
-                alt="QR code to redeem points"
-                width={220}
-                height={220}
-              />
-            </div>
-            <div className="grid gap-2">
-              <div className="text-sm text-white/60">Scan opens</div>
-              <a
-                href={redeemUrl}
-                className="underline break-all"
-                target="_blank"
-                rel="noreferrer"
-              >
-                {redeemUrl}
-              </a>
-              <div className="text-xs text-white/60">
-                This code can be redeemed only once. If it’s already redeemed or expired, generate a new one.
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-2">
-            <a
-              href={`/merchant?merchant=${selectedId}`}
-              className="rounded-xl border border-white/10 px-4 py-2 inline-block"
-            >
-              Done
-            </a>
-          </div>
-        </section>
-      )}
     </div>
   );
 }
