@@ -1,150 +1,84 @@
 // src/app/merchant/register/qr/[code]/page.tsx
-import { notFound, redirect } from "next/navigation";
-import { headers } from "next/headers";
+import { notFound } from "next/navigation";
 import { createServerClientSupabase } from "@/lib/supabase/server";
+import QRCode from "qrcode";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-function getOrigin(): string {
-  const h = headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  return `${proto}://${host}`;
+// Prefer a configured base URL so the QR works from any device/camera.
+function getBaseUrl() {
+  // Set this in your Vercel project settings (Environment Variables)
+  // e.g. NEXT_PUBLIC_SITE_URL=https://beach-life.vercel.app
+  const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (env) return env.replace(/\/+$/, "");
+  // Fallback (use your production domain if you want)
+  return "https://beach-life.vercel.app";
 }
 
 export default async function QRPage({ params }: { params: { code: string } }) {
   const supabase = createServerClientSupabase();
 
-  // Must be signed in (merchant staff/owner)
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) redirect("/login");
-
-  // Load token & basic status
+  // Make sure the code exists and is still valid (unredeemed + not expired)
   const { data: token } = await supabase
     .from("earn_tokens")
-    .select("code, merchant_id, points, expires_at, redeemed_at")
+    .select("code, expires_at, redeemed_at")
     .eq("code", params.code)
     .maybeSingle();
 
-  if (!token) notFound();
+  if (!token) {
+    notFound();
+  }
 
   const now = Date.now();
-  const expiresAt = token.expires_at ? new Date(token.expires_at).getTime() : 0;
-  const isExpired = expiresAt > 0 && now > expiresAt;
+  const expiresAtMs = token.expires_at ? new Date(token.expires_at).getTime() : 0;
+  const isExpired = expiresAtMs <= now;
   const isRedeemed = !!token.redeemed_at;
 
-  // Optional: verify this user is staff/owner of the merchant for this token
-  const { data: membership } = await supabase
-    .from("merchant_users")
-    .select("merchant_id, role")
-    .eq("user_id", auth.user.id)
-    .eq("merchant_id", token.merchant_id)
-    .maybeSingle();
-
-  if (!membership) {
+  if (isExpired || isRedeemed) {
     return (
-      <div className="max-w-md mx-auto p-6 space-y-4 text-center">
-        <h1 className="text-2xl font-bold">Not authorized</h1>
-        <p className="text-white/70">You are not linked to this merchant.</p>
-      </div>
-    );
-  }
-
-  const origin = getOrigin();
-  const claimUrl = `${origin}/claim/${token.code}`;
-
-  // Status screens
-  if (isRedeemed) {
-    return (
-      <div className="max-w-md mx-auto p-6 space-y-4 text-center">
-        <h1 className="text-2xl font-bold">Already redeemed</h1>
+      <div className="max-w-md mx-auto p-6 text-center space-y-3">
+        <h1 className="text-2xl font-bold">QR not available</h1>
         <p className="text-white/70">
-          This code has been redeemed. Generate a new one from the merchant console.
+          {isRedeemed ? "This code was already redeemed." : "This code has expired."}
         </p>
-        <a href="/merchant" className="rounded-xl border border-white/10 px-4 py-2 inline-block">
-          Back to Merchant Console
+        <a href="/merchant/register" className="inline-block mt-2 rounded-xl border border-white/15 px-4 py-2">
+          Create a new code
         </a>
       </div>
     );
   }
 
-  if (isExpired) {
-    return (
-      <div className="max-w-md mx-auto p-6 space-y-4 text-center">
-        <h1 className="text-2xl font-bold">Expired</h1>
-        <p className="text-white/70">
-          This QR code expired. Generate a fresh one from the merchant console.
-        </p>
-        <a href="/merchant" className="rounded-xl border border-white/10 px-4 py-2 inline-block">
-          Back to Merchant Console
-        </a>
-      </div>
-    );
-  }
+  const base = getBaseUrl();
+  const claimUrl = `${base}/claim/${encodeURIComponent(token.code)}`;
 
-  // Valid token → render QR (hosted generator; no client libs needed)
+  // Render the QR image as a data URL server-side
+  const dataUrl = await QRCode.toDataURL(claimUrl, {
+    width: 360,
+    margin: 1,
+  });
+
+  const secondsLeft = Math.max(0, Math.floor((expiresAtMs - now) / 1000));
+
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Customer QR</h1>
-        <div className="text-sm text-white/60">
-          Points: <span className="font-mono">{token.points}</span>
-        </div>
+    <div className="max-w-md mx-auto p-6 text-center space-y-5">
+      <h1 className="text-2xl font-bold">Have the customer scan this</h1>
+
+      <div className="mx-auto rounded-2xl bg-white p-3 w-fit shadow-soft">
+        <img src={dataUrl} alt="One-time QR code" className="block w-[360px] h-[360px]" />
       </div>
 
-      <section className="rounded-2xl bg-[var(--card)] shadow-soft p-5 space-y-4 border border-white/10">
-        <div className="text-sm text-white/60">
-          Role: <span className="font-mono">{membership.role}</span>
-        </div>
+      <div className="text-white/70">
+        Expires in <span className="font-semibold">{secondsLeft}</span> seconds.
+      </div>
 
-        <div className="flex items-center gap-6">
-          <div className="rounded-2xl overflow-hidden border border-white/10">
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-                claimUrl
-              )}`}
-              alt="QR code to redeem points"
-              width={220}
-              height={220}
-            />
-          </div>
+      <div className="text-sm text-white/60">
+        Scanning opens: <span className="font-mono">{claimUrl}</span>
+      </div>
 
-          <div className="grid gap-2">
-            <div className="text-sm text-white/60">Scan opens</div>
-            <a href={claimUrl} className="underline break-all" target="_blank" rel="noreferrer">
-              {claimUrl}
-            </a>
-            {expiresAt > 0 && (
-              <div className="text-xs text-white/60">
-                Expires at:{" "}
-                <span className="font-mono">
-                  {new Date(expiresAt).toLocaleString()}
-                </span>
-              </div>
-            )}
-            <div className="text-xs text-white/60">
-              One-time use. If redeemed or expired, generate a new code.
-            </div>
-          </div>
-        </div>
-
-        <div className="pt-2 flex items-center gap-3">
-          <a
-            href="/merchant"
-            className="rounded-xl border border-white/10 px-4 py-2 inline-block"
-          >
-            Done
-          </a>
-          <a
-            href={`/merchant/register?merchant=${token.merchant_id}`}
-            className="rounded-xl border border-white/10 px-4 py-2 inline-block"
-          >
-            Generate Another
-          </a>
-        </div>
-      </section>
+      {/* After it expires, kick back to the register page */}
+      <meta httpEquiv="refresh" content={`${secondsLeft};url=/merchant/register`} />
     </div>
   );
 }
