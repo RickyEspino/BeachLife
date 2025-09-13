@@ -105,7 +105,6 @@ async function addMemberAction(formData: FormData) {
   const user_id = (row as { user_id?: string } | null | undefined)?.user_id;
 
   if (!user_id) {
-    // No user yet — silently ignore or surface a message via query param
     redirect(
       `/admin/merchants/${merchant_id}/edit?merr=user_not_found&email=${encodeURIComponent(
         email
@@ -165,23 +164,38 @@ export default async function EditMerchantPage({
 
   if (!m) notFound();
 
-  // Load members with embedded profile (aliased to a single object)
+  // Load members with embedded profile.
+  // NOTE: Some generated types treat embedded rows as arrays; we normalize below.
   const { data: members } = await supabase
     .from("merchant_users")
     .select(
       `
-      user_id,
-      role,
-      profile:profiles (
-        id,
-        email,
-        display_name
-      )
-    `
+        user_id,
+        role,
+        profile:profiles!merchant_users_user_id_fkey (
+          id,
+          email,
+          display_name
+        )
+      `
     )
     .eq("merchant_id", params.id);
 
-  const rows = (members ?? []) as MemberRow[];
+  // Normalize `profile` to a single object (handles array/object inference differences)
+  const rows: MemberRow[] = (members ?? []).map((r: any) => {
+    const p = Array.isArray(r.profile) ? (r.profile[0] ?? null) : (r.profile ?? null);
+    return {
+      user_id: String(r.user_id),
+      role: r.role,
+      profile: p
+        ? {
+            id: String(p.id),
+            email: p.email ?? null,
+            display_name: p.display_name ?? null,
+          }
+        : null,
+    };
+  });
 
   return (
     <div className="max-w-2xl p-6 space-y-8">
