@@ -3,27 +3,21 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
 export const createSupabaseServerClient = () => {
-  const cookieStore = cookies();
-
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        // Read all cookies Supabase may need
-        getAll() {
-          // Next.js cookies().getAll() => { name, value }[]
-          return cookieStore.getAll().map((c) => ({
-            name: c.name,
-            value: c.value,
-          }));
+        // Next.js 15: cookies() is async — call it inside the method.
+        async getAll() {
+          const store = await cookies();
+          return store.getAll().map(({ name, value }) => ({ name, value }));
         },
-        // Set (or update) cookies Supabase asks to write
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            // Next.js accepts (name, value, options)
-            cookieStore.set(name, value, options);
-          });
+        async setAll(cookiesToSet) {
+          const store = await cookies();
+          for (const { name, value, options } of cookiesToSet) {
+            store.set(name, value, options);
+          }
         },
       },
     }
