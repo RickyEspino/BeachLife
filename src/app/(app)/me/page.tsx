@@ -1,4 +1,4 @@
-// src/app/me/page.tsx
+// src/app/(app)/me/page.tsx
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
 import { awardPointsOnce, awardPointsOncePerDay } from "@/app/actions/points";
@@ -18,17 +18,19 @@ export default async function MePage() {
   // Require auth
   const {
     data: { user },
+    error: userErr,
   } = await supabase.auth.getUser();
+  if (userErr) redirect("/login");
   if (!user) redirect("/login");
 
-  // Profile (now also fetching role)
+  // Profile (null-safe; also read role so we can show Admin button)
   const { data: profile } = await supabase
     .from("profiles")
     .select("username, avatar_url, role")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
-  if (!profile?.username) redirect("/onboarding");
+  if (!profile || !profile.username) redirect("/onboarding");
 
   // Total (try view first, fallback to sum)
   let totalPoints = 0;
@@ -72,7 +74,6 @@ export default async function MePage() {
   const now = new Date();
   const startUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
   const startUtcIso = startUtc.toISOString();
-
   const { data: todayCheckin } = await supabase
     .from("point_events")
     .select("id")
@@ -81,10 +82,9 @@ export default async function MePage() {
     .gte("created_at", startUtcIso)
     .limit(1)
     .maybeSingle();
-
   const canClaimDaily = !todayCheckin;
 
-  // ---------- Server Action Wrappers (return void) ----------
+  // ---------- Server Action Wrappers (must return void) ----------
   async function claimProfileCompleteAction() {
     "use server";
     await awardPointsOnce("profile_complete", 100, {
@@ -96,7 +96,7 @@ export default async function MePage() {
     "use server";
     await awardPointsOncePerDay("daily_checkin", 500, { reason: "Daily check-in" });
   }
-  // ---------------------------------------------------------
+  // ---------------------------------------------------------------
 
   const initials = initialsFrom(profile.username, user.email || undefined);
   const isAdmin = profile.role === "admin";
@@ -131,10 +131,7 @@ export default async function MePage() {
             <div className="mt-1 text-3xl font-semibold">{totalPoints.toLocaleString()}</div>
           </div>
 
-          <a
-            href="/onboarding"
-            className="rounded-lg border p-4 hover:bg-gray-50 transition"
-          >
+          <a href="/onboarding" className="rounded-lg border p-4 hover:bg-gray-50 transition">
             <div className="text-sm text-gray-500">Profile</div>
             <div className="mt-1 font-medium">Edit profile</div>
           </a>
@@ -154,7 +151,6 @@ export default async function MePage() {
               href="/admin"
               className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 text-white px-4 py-2 font-medium hover:bg-indigo-700 transition"
             >
-              {/* Simple shield icon */}
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path d="M12 3l7 4v5c0 4.418-2.686 8.418-7 10-4.314-1.582-7-5.582-7-10V7l7-4z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" className="opacity-90"/>
                 <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -174,22 +170,16 @@ export default async function MePage() {
               </div>
               <div>
                 <div className="font-medium">Daily check-in</div>
-                <div className="text-sm text-gray-600">
-                  Come back every day to earn 500 points.
-                </div>
+                <div className="text-sm text-gray-600">Come back every day to earn 500 points.</div>
               </div>
             </div>
 
             {canClaimDaily ? (
               <form action={claimDailyAction}>
-                <button className="rounded-lg bg-black text-white px-4 py-2 font-medium">
-                  Claim +500
-                </button>
+                <button className="rounded-lg bg-black text-white px-4 py-2 font-medium">Claim +500</button>
               </form>
             ) : (
-              <div className="rounded-lg border px-4 py-2 font-medium text-center">
-                Already claimed today
-              </div>
+              <div className="rounded-lg border px-4 py-2 font-medium text-center">Already claimed today</div>
             )}
           </div>
 
@@ -201,23 +191,16 @@ export default async function MePage() {
               </div>
               <div>
                 <div className="font-medium">Profile complete</div>
-                <div className="text-sm text-gray-600">
-                  Add an avatar and a username to earn a one-time bonus.
-                </div>
+                <div className="text-sm text-gray-600">Add an avatar and a username to earn a one-time bonus.</div>
               </div>
             </div>
 
             {canClaimProfileComplete ? (
               <form action={claimProfileCompleteAction}>
-                <button className="rounded-lg bg-black text-white px-4 py-2 font-medium">
-                  Claim +100
-                </button>
+                <button className="rounded-lg bg-black text-white px-4 py-2 font-medium">Claim +100</button>
               </form>
             ) : (
-              <a
-                href="/onboarding"
-                className="rounded-lg border px-4 py-2 font-medium text-center"
-              >
+              <a href="/onboarding" className="rounded-lg border px-4 py-2 font-medium text-center">
                 {hasAvatar ? "Already claimed" : "Finish profile"}
               </a>
             )}
@@ -247,15 +230,9 @@ export default async function MePage() {
                 ) : (
                   (history ?? []).map((row) => (
                     <tr key={row.id} className="border-t">
-                      <td className="px-4 py-2">
-                        {new Date(row.created_at).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-2 capitalize">
-                        {row.type.replace(/_/g, " ")}
-                      </td>
-                      <td className="px-4 py-2 text-gray-600">
-                        {row.metadata?.reason ?? "—"}
-                      </td>
+                      <td className="px-4 py-2">{new Date(row.created_at).toLocaleString()}</td>
+                      <td className="px-4 py-2 capitalize">{row.type.replace(/_/g, " ")}</td>
+                      <td className="px-4 py-2 text-gray-600">{row.metadata?.reason ?? "—"}</td>
                       <td className="px-4 py-2 text-right font-medium">
                         {row.points > 0 ? `+${row.points}` : row.points}
                       </td>
