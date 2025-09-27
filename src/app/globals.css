@@ -1,33 +1,36 @@
 /* styles/globals.css */
+@reference 'tailwindcss';        /* 👈 lets this file @apply Tailwind utilities */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-
+/* Design tokens */
 :root {
---color-brand: 27 100% 50%; /* teal-ish primary */
---color-ocean: 190 90% 40%;
---color-sand: 40 100% 92%;
+  --color-brand: 27 100% 50%; /* teal-ish primary */
+  --color-ocean: 190 90% 40%;
+  --color-sand: 40 100% 92%;
+  /* iOS safe area helpers */
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
 }
 
-
-/* iOS safe area helpers */
-:root {
---safe-top: env(safe-area-inset-top);
---safe-bottom: env(safe-area-inset-bottom);
-}
-
-
+/* Base resets */
 html, body { height: 100%; }
-body { @apply bg-white text-gray-900; }
 
+/* Put base element tweaks under the base layer */
+@layer base {
+  body { @apply bg-white text-gray-900; }
+}
 
 /*********************
-Bottom nav aesthetics
+ Bottom nav aesthetics
 *********************/
-.bl-tab {
-@apply flex flex-col items-center justify-center gap-1 text-xs font-medium px-3 py-2 rounded-xl transition;
-}
-.bl-tab--active {
-@apply bg-gray-900 text-white;
+@layer components {
+  .bl-tab {
+    @apply flex flex-col items-center justify-center gap-1 text-xs font-medium px-3 py-2 rounded-xl transition;
+  }
+  .bl-tab--active {
+    @apply bg-gray-900 text-white;
+  }
 }
