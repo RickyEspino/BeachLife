@@ -1,18 +1,18 @@
 // src/lib/nav.ts
 import type { ComponentType, SVGProps } from "react";
-import { Home, Map, PlaySquare, Users, User } from "lucide-react";
+import { Sun, Map, Film, Users, User } from "lucide-react";
 
 export type Tab = {
   href: string;
   label: string;
-  icon?: ComponentType<SVGProps<SVGSVGElement>>; // lucide icon component
+  icon?: ComponentType<SVGProps<SVGSVGElement>>;
   matchPrefix?: string;
 };
 
 export const TABS: Tab[] = [
-  { href: "/", label: "Home", icon: Home, matchPrefix: "/" },
-  { href: "/map", label: "Map", icon: Map, matchPrefix: "/map" },
-  { href: "/play", label: "Play", icon: PlaySquare, matchPrefix: "/play" },
-  { href: "/friends", label: "Friends", icon: Users, matchPrefix: "/friends" },
-  { href: "/me", label: "Me", icon: User, matchPrefix: "/me" },
+  { href: "/now",       label: "Now",       icon: Sun,   matchPrefix: "/now" },
+  { href: "/map",       label: "Map",       icon: Map,   matchPrefix: "/map" },
+  { href: "/reels",     label: "Reels",     icon: Film,  matchPrefix: "/reels" },
+  { href: "/community", label: "Community", icon: Users, matchPrefix: "/community" },
+  { href: "/me",        label: "Me",        icon: User,  matchPrefix: "/me" },
 ];
