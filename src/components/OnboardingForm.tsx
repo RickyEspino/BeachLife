@@ -3,7 +3,7 @@
 
 import { useState, useMemo, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
+import NextImage from "next/image";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browserClient";
 
 type Props = {
@@ -25,7 +25,7 @@ async function downscaleImageToJpeg(file: File, maxSize = 512): Promise<File> {
   });
 
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const i = new Image();
+    const i = document.createElement("img"); // ← no `new Image()`
     i.onload = () => resolve(i);
     i.onerror = () => reject(new Error("Failed to load image"));
     i.src = dataUrl;
@@ -52,7 +52,7 @@ async function downscaleImageToJpeg(file: File, maxSize = 512): Promise<File> {
   });
 }
 
-export function OnboardingForm({
+export default function OnboardingForm({
   userId,
   email,
   initialUsername = "",
@@ -62,7 +62,7 @@ export function OnboardingForm({
   const supabase = useMemo(createSupabaseBrowserClient, []);
   const [username, setUsername] = useState(initialUsername);
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string>(initialAvatarUrl); // can be blob: or https:
+  const [preview, setPreview] = useState<string>(initialAvatarUrl); // blob: or https:
   const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
   const [message, setMessage] = useState("");
 
@@ -139,13 +139,12 @@ export function OnboardingForm({
       <div className="flex items-center gap-4">
         <div className="h-16 w-16 rounded-full overflow-hidden border bg-gray-50 relative">
           {preview ? (
-            <Image
+            <NextImage
               src={preview}
               alt="Avatar preview"
               fill
               sizes="64px"
               className="object-cover"
-              // Allows blob: URLs and avoids optimization in dev for arbitrary origins
               unoptimized
               priority
             />
@@ -157,12 +156,7 @@ export function OnboardingForm({
         </div>
         <div>
           <label className="block text-sm font-medium">Avatar</label>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={onFileChange}
-            className="mt-1 block text-sm"
-          />
+          <input type="file" accept="image/*" onChange={onFileChange} className="mt-1 block text-sm" />
           <p className="mt-1 text-xs text-gray-500">JPG/PNG/WebP, ~5MB max recommended.</p>
         </div>
       </div>
@@ -200,11 +194,7 @@ export function OnboardingForm({
         </button>
       </div>
 
-      {status === "error" && message && (
-        <div className="text-sm text-red-600">{message}</div>
-      )}
+      {status === "error" && message && <div className="text-sm text-red-600">{message}</div>}
     </form>
   );
 }
-
-export default OnboardingForm;
