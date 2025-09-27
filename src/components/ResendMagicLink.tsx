@@ -1,3 +1,4 @@
+// src/components/ResendMagicLink.tsx
 "use client";
 
 import { useState } from "react";
@@ -13,9 +14,7 @@ export function ResendMagicLink({ email }: { email: string }) {
     try {
       const supabase = createSupabaseBrowserClient();
       const redirectTo =
-        typeof window !== "undefined"
-          ? `${window.location.origin}/auth/callback`
-          : undefined;
+        typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
 
       const { error } = await supabase.auth.signInWithOtp({
         email,
@@ -29,9 +28,10 @@ export function ResendMagicLink({ email }: { email: string }) {
       }
       setStatus("sent");
       setMsg("Magic link re-sent. Check your inbox!");
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Something went wrong.";
       setStatus("error");
-      setMsg(e?.message ?? "Something went wrong.");
+      setMsg(msg);
     }
   };
 
@@ -46,14 +46,10 @@ export function ResendMagicLink({ email }: { email: string }) {
       </button>
 
       {msg && (
-        <div
-          className={`mt-3 text-sm ${
-            status === "error" ? "text-red-600" : "text-emerald-600"
-          }`}
-        >
-          {msg}
-        </div>
+        <div className={`mt-3 text-sm ${status === "error" ? "text-red-600" : "text-emerald-600"}`}>{msg}</div>
       )}
     </div>
   );
 }
+
+export default ResendMagicLink;

@@ -14,10 +14,6 @@ type Props = {
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 
-/**
- * Downscale large images client-side (free-plan friendly).
- * Re-encodes as JPEG (quality ~0.85) with max dimension `maxSize`.
- */
 async function downscaleImageToJpeg(file: File, maxSize = 512): Promise<File> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -45,11 +41,7 @@ async function downscaleImageToJpeg(file: File, maxSize = 512): Promise<File> {
   ctx.drawImage(img, 0, 0, w, h);
 
   const blob: Blob = await new Promise((resolve, reject) =>
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error("Failed to encode image"))),
-      "image/jpeg",
-      0.85
-    )
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Failed to encode image"))), "image/jpeg", 0.85)
   );
 
   return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", {
@@ -85,14 +77,10 @@ export function OnboardingForm({
     setMessage("");
 
     try {
-      // 1) Validate username
       if (!USERNAME_REGEX.test(username)) {
-        throw new Error(
-          "Username must be 3–20 characters: letters, numbers, or underscores."
-        );
+        throw new Error("Username must be 3–20 characters: letters, numbers, or underscores.");
       }
 
-      // 2) Ensure unique username (exclude current user)
       const { data: taken, error: checkErr } = await supabase
         .from("profiles")
         .select("id")
@@ -102,7 +90,6 @@ export function OnboardingForm({
       if (checkErr) throw checkErr;
       if (taken) throw new Error("That username is taken. Try another.");
 
-      // 3) Upload avatar if provided (public bucket), with optional client-side downscale
       let avatarUrl = initialAvatarUrl || "";
       if (file) {
         const resized = await downscaleImageToJpeg(file, 512);
@@ -117,11 +104,10 @@ export function OnboardingForm({
           });
         if (uploadErr) throw uploadErr;
 
-        const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
+        const { data: pub } = await supabase.storage.from("avatars").getPublicUrl(path);
         avatarUrl = pub.publicUrl;
       }
 
-      // 4) Upsert profile
       const { error: upsertErr } = await supabase.from("profiles").upsert(
         {
           id: userId,
@@ -134,11 +120,11 @@ export function OnboardingForm({
       );
       if (upsertErr) throw upsertErr;
 
-      // 5) Done → go to user dashboard
       router.push("/me");
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Something went wrong.";
       setStatus("error");
-      setMessage(err?.message ?? "Something went wrong.");
+      setMessage(msg);
     } finally {
       setStatus("idle");
     }
@@ -146,16 +132,10 @@ export function OnboardingForm({
 
   return (
     <form onSubmit={saveProfile} className="space-y-5" noValidate>
-      {/* Avatar picker */}
       <div className="flex items-center gap-4">
         <div className="h-16 w-16 rounded-full overflow-hidden border bg-gray-50">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           {preview ? (
-            <img
-              src={preview}
-              alt="Avatar preview"
-              className="h-full w-full object-cover"
-            />
+            <img src={preview} alt="Avatar preview" className="h-full w-full object-cover" />
           ) : (
             <div className="h-full w-full flex items-center justify-center text-xs text-gray-400">
               No avatar
@@ -164,36 +144,24 @@ export function OnboardingForm({
         </div>
         <div>
           <label className="block text-sm font-medium">Avatar</label>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={onFileChange}
-            className="mt-1 block text-sm"
-          />
-          <p className="mt-1 text-xs text-gray-500">
-            JPG/PNG/WebP, ~5MB max recommended.
-          </p>
+          <input type="file" accept="image/*" onChange={onFileChange} className="mt-1 block text-sm" />
+          <p className="mt-1 text-xs text-gray-500">JPG/PNG/WebP, ~5MB max recommended.</p>
         </div>
       </div>
 
-      {/* Username */}
       <div>
         <label className="block text-sm font-medium">Username</label>
         <input
           type="text"
           value={username}
-          onChange={(e) =>
-            setUsername(e.target.value.replace(/\s+/g, "_").toLowerCase())
-          }
+          onChange={(e) => setUsername(e.target.value.replace(/\s+/g, "_").toLowerCase())}
           placeholder="your_handle"
           className="mt-1 w-full rounded-lg border px-3 py-2 outline-none focus:ring"
           required
           minLength={3}
           maxLength={20}
         />
-        <p className="mt-1 text-xs text-gray-500">
-          3–20 characters. Letters, numbers, or underscores.
-        </p>
+        <p className="mt-1 text-xs text-gray-500">3–20 characters. Letters, numbers, or underscores.</p>
       </div>
 
       <div className="flex gap-3">
@@ -204,18 +172,14 @@ export function OnboardingForm({
         >
           {status === "saving" ? "Saving…" : "Save & Continue"}
         </button>
-        <button
-          type="button"
-          onClick={() => router.push("/me")}
-          className="rounded-lg border px-4 py-2 font-medium"
-        >
+        <button type="button" onClick={() => router.push("/me")} className="rounded-lg border px-4 py-2 font-medium">
           Skip for now
         </button>
       </div>
 
-      {status === "error" && message && (
-        <div className="text-sm text-red-600">{message}</div>
-      )}
+      {status === "error" && message && <div className="text-sm text-red-600">{message}</div>}
     </form>
   );
 }
+
+export default OnboardingForm;

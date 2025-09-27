@@ -18,10 +18,12 @@ export default function MerchantLoginPage() {
 
     try {
       const supabase = createSupabaseBrowserClient();
-      const nextPath = "/merchant/onboarding"; // after callback
+      const nextPath = "/merchant/onboarding";
       const redirectTo =
         typeof window !== "undefined"
-          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+              nextPath
+            )}`
           : undefined;
 
       const { error } = await supabase.auth.signInWithOtp({
@@ -34,9 +36,10 @@ export default function MerchantLoginPage() {
         return;
       }
       router.push(`/check-email?email=${encodeURIComponent(email)}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Something went wrong.";
       setStatus("error");
-      setMessage(err?.message ?? "Something went wrong.");
+      setMessage(msg);
     } finally {
       setStatus("idle");
     }
@@ -46,9 +49,7 @@ export default function MerchantLoginPage() {
     <div className="min-h-[100dvh] flex items-center justify-center p-6">
       <div className="w-full max-w-md rounded-2xl border p-6 shadow-sm">
         <h1 className="text-2xl font-semibold mb-2">Merchant sign in</h1>
-        <p className="text-sm text-gray-500 mb-6">
-          We’ll email you a secure magic link.
-        </p>
+        <p className="text-sm text-gray-500 mb-6">We’ll email you a magic link.</p>
 
         <form onSubmit={onSubmit} className="space-y-4">
           <label className="block">

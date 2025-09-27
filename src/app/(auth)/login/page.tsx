@@ -21,7 +21,6 @@ export default function LoginPage() {
     try {
       const supabase = createSupabaseBrowserClient();
 
-      // Send users back to /auth/callback which will then redirect to /onboarding.
       const nextPath = "/onboarding";
       const redirectTo =
         typeof window !== "undefined"
@@ -41,11 +40,11 @@ export default function LoginPage() {
         return;
       }
 
-      // ✅ Go to a dedicated confirmation page
       router.push(`/check-email?email=${encodeURIComponent(email)}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Something went wrong.";
       setStatus("error");
-      setMessage(err?.message ?? "Something went wrong.");
+      setMessage(msg);
     } finally {
       setStatus("idle");
     }
@@ -83,15 +82,9 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Only show errors here */}
         {status === "error" && message && (
           <div className="mt-4 text-sm text-red-600">{message}</div>
         )}
-
-        <div className="mt-6 text-xs text-gray-500">
-          By continuing you agree to receive a one-time sign-in link at the email
-          provided.
-        </div>
       </div>
     </div>
   );

@@ -4,14 +4,10 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
 
-/**
- * Award points to the current signed-in user.
- * Throws if unauthenticated or insert fails.
- */
 export async function awardPoints(
   type: string,
   points: number,
-  metadata: Record<string, any> = {}
+  metadata: Record<string, unknown> = {}
 ) {
   const supabase = createSupabaseServerClient();
   const {
@@ -29,17 +25,13 @@ export async function awardPoints(
   if (error) throw error;
 
   revalidatePath("/me");
-  return { ok: true };
+  return { ok: true as const };
 }
 
-/**
- * Award points only once per (user, type).
- * If already awarded, this is a no-op.
- */
 export async function awardPointsOnce(
   type: string,
   points: number,
-  metadata: Record<string, any> = {}
+  metadata: Record<string, unknown> = {}
 ) {
   const supabase = createSupabaseServerClient();
   const {
@@ -68,17 +60,13 @@ export async function awardPointsOnce(
   }
 
   revalidatePath("/me");
-  return { ok: true, alreadyAwarded: !!existing };
+  return { ok: true as const, alreadyAwarded: !!existing };
 }
 
-/**
- * Award points at most once per day (UTC) per (user, type).
- * Example: awardPointsOncePerDay("daily_checkin", 500, {...})
- */
 export async function awardPointsOncePerDay(
   type: string,
   points: number,
-  metadata: Record<string, any> = {}
+  metadata: Record<string, unknown> = {}
 ) {
   const supabase = createSupabaseServerClient();
   const {
@@ -87,12 +75,10 @@ export async function awardPointsOncePerDay(
 
   if (!user) throw new Error("Not authenticated");
 
-  // Start of today in UTC
   const now = new Date();
-  const startUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+  const startUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const startUtcIso = startUtc.toISOString();
 
-  // Has an event of this type already been created today (UTC)?
   const { data: existingToday, error: checkErr } = await supabase
     .from("point_events")
     .select("id")
@@ -115,5 +101,5 @@ export async function awardPointsOncePerDay(
   }
 
   revalidatePath("/me");
-  return { ok: true, alreadyAwardedToday: !!existingToday };
+  return { ok: true as const, alreadyAwardedToday: !!existingToday };
 }

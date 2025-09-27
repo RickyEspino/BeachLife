@@ -5,10 +5,7 @@ import { useMemo, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browserClient";
 
-type Props = {
-  ownerUserId: string;
-  ownerEmail: string;
-};
+type Props = { ownerUserId: string; ownerEmail: string };
 
 const CATEGORIES = [
   "Restaurant",
@@ -43,11 +40,10 @@ export function MerchantOnboardingForm({ ownerUserId, ownerEmail }: Props) {
     try {
       if (!businessName.trim()) throw new Error("Business name is required.");
 
-      // Parse lat/lng (optional)
       const lat = latitude ? Number(latitude) : null;
       const lng = longitude ? Number(longitude) : null;
-      if (latitude && isNaN(lat!)) throw new Error("Latitude must be a number.");
-      if (longitude && isNaN(lng!)) throw new Error("Longitude must be a number.");
+      if (latitude && Number.isNaN(lat)) throw new Error("Latitude must be a number.");
+      if (longitude && Number.isNaN(lng)) throw new Error("Longitude must be a number.");
 
       const { error } = await supabase.from("merchants").insert({
         owner_user_id: ownerUserId,
@@ -62,11 +58,11 @@ export function MerchantOnboardingForm({ ownerUserId, ownerEmail }: Props) {
 
       if (error) throw error;
 
-      // Go to merchant dashboard
       router.push("/merchant");
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Something went wrong.";
       setStatus("error");
-      setMessage(err?.message ?? "Something went wrong.");
+      setMessage(msg);
     } finally {
       setStatus("idle");
     }
@@ -186,10 +182,8 @@ export function MerchantOnboardingForm({ ownerUserId, ownerEmail }: Props) {
       {status === "error" && message && (
         <div className="text-sm text-red-600">{message}</div>
       )}
-
-      <p className="text-xs text-gray-500">
-        Tip: You can add a map picker later; for now, lat/lng will place your pin.
-      </p>
     </form>
   );
 }
+
+export default MerchantOnboardingForm;
