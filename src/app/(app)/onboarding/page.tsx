@@ -1,4 +1,3 @@
-// src/app/(app)/onboarding/page.tsx
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
@@ -14,6 +13,7 @@ function strParam(v: string | string[] | undefined): string | undefined {
 
 export default async function OnboardingPage({ searchParams }: Props) {
   const supabase = createSupabaseServerClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -30,12 +30,45 @@ export default async function OnboardingPage({ searchParams }: Props) {
     profile?.onboarded === true ||
     (!!profile?.username && profile.username.trim() !== "" && !!profile?.avatar_url);
 
-  // Already-onboarded users default to /now unless explicitly editing
   if (isOnboarded && !edit) {
     redirect("/now");
   }
 
-  /* ----------------- server actions: avatar ----------------- */
+  // Save username + mark onboarded
+  async function saveProfileAction(formData: FormData) {
+    "use server";
+    const supabase = createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      redirect("/login");
+    }
+
+    const usernameRaw = String(formData.get("username") ?? "").trim();
+    const username = usernameRaw.replace(/\s+/g, "_").slice(0, 40); // simple sanitize
+
+    if (!username) {
+      // If empty, just reload page; you can enhance with form validation later
+      revalidatePath("/(app)/onboarding");
+      return;
+    }
+
+    await supabase
+      .from("profiles")
+      .upsert({
+        id: user.id,
+        username,
+        onboarded: true,
+        updated_at: new Date().toISOString(),
+      });
+
+    revalidatePath("/(app)/onboarding");
+    revalidatePath("/(app)/me");
+    redirect("/now");
+  }
+
+  /* ----------------- avatar upload/remove (from earlier) ----------------- */
   async function uploadAvatarAction(formData: FormData) {
     "use server";
     const supabase = createSupabaseServerClient();
@@ -46,40 +79,32 @@ export default async function OnboardingPage({ searchParams }: Props) {
 
     const file = formData.get("avatar") as File | null;
     if (!file || file.size === 0) return;
-
-    // Basic type/size guardrails (optional)
-    if (file.size > 5 * 1024 * 1024) {
-      // ~5MB cap
-      return;
-    }
+    if (file.size > 5 * 1024 * 1024) return; // 5MB cap
 
     const ext = (file.name.split(".").pop() || "png").toLowerCase();
     const path = `avatars/${user.id}/avatar-${Date.now()}.${ext}`;
 
-    // Upload to public bucket "avatars" (ensure it exists & public)
     const { error: upErr } = await supabase
       .storage
       .from("avatars")
       .upload(path, file, { upsert: true, contentType: file.type || "image/png" });
 
-    if (upErr) return;
+    if (!upErr) {
+      const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+      const publicUrl = urlData?.publicUrl;
 
-    // Get public URL
-    const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
-    const publicUrl = urlData?.publicUrl;
+      if (publicUrl) {
+        await supabase
+          .from("profiles")
+          .upsert({
+            id: user.id,
+            avatar_url: publicUrl,
+            updated_at: new Date().toISOString(),
+          });
 
-    if (publicUrl) {
-      await supabase
-        .from("profiles")
-        .upsert({
-          id: user.id,
-          avatar_url: publicUrl,
-          updated_at: new Date().toISOString(),
-        });
-
-      // Revalidate onboarding + me
-      revalidatePath("/(app)/onboarding");
-      revalidatePath("/(app)/me");
+        revalidatePath("/(app)/onboarding");
+        revalidatePath("/(app)/me");
+      }
     }
   }
 
@@ -99,13 +124,13 @@ export default async function OnboardingPage({ searchParams }: Props) {
     revalidatePath("/(app)/onboarding");
     revalidatePath("/(app)/me");
   }
-  /* ---------------------------------------------------------- */
+  /* ---------------------------------------------------------------------- */
 
   const hasAvatar = !!profile?.avatar_url;
 
   return (
     <main className="min-h-[100dvh] bg-gradient-to-b from-sand-50/40 to-white">
-      {/* Hero / Welcome */}
+      {/* Hero */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(90%_60%_at_10%_-10%,rgba(46,196,182,0.25),transparent),radial-gradient(80%_55%_at_110%_-20%,rgba(124,111,197,0.2),transparent)]" />
         <div className="mx-auto w-full max-w-xl px-5 pt-[calc(env(safe-area-inset-top,0px)+24px)] pb-6">
@@ -119,7 +144,6 @@ export default async function OnboardingPage({ searchParams }: Props) {
             </div>
           </div>
 
-          {/* Chips */}
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="inline-flex items-center rounded-full border px-3 py-1 text-xs text-gray-700 bg-white/70">
               Earn points daily
@@ -134,7 +158,7 @@ export default async function OnboardingPage({ searchParams }: Props) {
         </div>
       </section>
 
-      {/* Avatar uploader — same UX vibe as Me → Profile */}
+      {/* Avatar uploader */}
       <section className="mx-auto w-full max-w-xl px-5">
         <div className="rounded-2xl border bg-white p-5 shadow-sm">
           <div className="flex items-center gap-3">
@@ -194,78 +218,22 @@ export default async function OnboardingPage({ searchParams }: Props) {
         </div>
       </section>
 
-      {/* Slideshow + Form */}
+      {/* Intro cards + Form */}
       <section className="mx-auto w-full max-w-xl px-5 pt-5 pb-[calc(env(safe-area-inset-bottom,0px)+24px)]">
-        {/* Simple JS-free slideshow */}
-        <div className="rounded-2xl border bg-white shadow-sm overflow-hidden mb-4">
-          <div className="p-4">
-            <div className="relative">
-              <input className="peer/s1 absolute opacity-0 pointer-events-none" type="radio" name="intro" id="intro-1" defaultChecked />
-              <input className="peer/s2 absolute opacity-0 pointer-events-none" type="radio" name="intro" id="intro-2" />
-              <input className="peer/s3 absolute opacity-0 pointer-events-none" type="radio" name="intro" id="intro-3" />
-
-              <div className="relative h-32 sm:h-24">
-                <div className="absolute inset-0 grid grid-cols-[auto,1fr] items-center gap-3 transition-opacity duration-300
-                                opacity-100 peer-checked/s1:opacity-100 peer-checked/s2:opacity-0 peer-checked/s3:opacity-0">
-                  <div className="h-10 w-10 rounded-lg bg-[#2EC4B6]/10 text-[#2EC4B6] grid place-items-center">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-                      <path d="M3 11l9-7 9 7-9 7-9-7z" stroke="currentColor" strokeWidth="1.5" />
-                      <path d="M9 22V12l6-4v10" stroke="currentColor" strokeWidth="1.5" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-medium">Explore your beach in “Now”</h3>
-                    <p className="text-sm text-gray-600">Surf, weather, and highlights at a glance.</p>
-                  </div>
-                </div>
-
-                <div className="absolute inset-0 grid grid-cols-[auto,1fr] items-center gap-3 transition-opacity duration-300
-                                opacity-0 peer-checked/s2:opacity-100">
-                  <div className="h-10 w-10 rounded-lg bg-[#7C6FC5]/10 text-[#7C6FC5] grid place-items-center">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-                      <path d="M12 3l7 4v5c0 4.418-2.686 8.418-7 10-4.314-1.582-7-5.582-7-10V7l7-4z" stroke="currentColor" strokeWidth="1.5" />
-                      <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-medium">Earn Beach Points</h3>
-                    <p className="text-sm text-gray-600">Daily check-ins & milestones = rewards.</p>
-                  </div>
-                </div>
-
-                <div className="absolute inset-0 grid grid-cols-[auto,1fr] items-center gap-3 transition-opacity duration-300
-                                opacity-0 peer-checked/s3:opacity-100">
-                  <div className="h-10 w-10 rounded-lg bg-[#FF6A5A]/10 text-[#FF6A5A] grid place-items-center">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-                      <path d="M4 12h16M4 12l4-4M4 12l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-medium">Share & connect</h3>
-                    <p className="text-sm text-gray-600">Reels + community keep the vibe alive.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 flex items-center justify-center gap-2">
-                <label htmlFor="intro-1" className="h-2.5 w-2.5 rounded-full bg-gray-300 cursor-pointer peer-checked/s1:bg-gray-900" />
-                <label htmlFor="intro-2" className="h-2.5 w-2.5 rounded-full bg-gray-300 cursor-pointer peer-checked/s2:bg-gray-900" />
-                <label htmlFor="intro-3" className="h-2.5 w-2.5 rounded-full bg-gray-300 cursor-pointer peer-checked/s3:bg-gray-900" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Your existing onboarding form */}
         <div className="rounded-2xl border bg-white p-5 shadow-sm">
           <h2 className="text-lg sm:text-xl font-semibold mb-1">
             {isOnboarded ? "Edit your profile" : "Let’s get you set up"}
           </h2>
           <p className="text-sm text-gray-600 mb-4">
-            Add your username and avatar. You can change these anytime.
+            Add your username. You can change this anytime.
           </p>
 
-          <OnboardingForm initialProfile={profile ?? {}} mode={isOnboarded ? "edit" : "create"} />
+          <OnboardingForm
+            initialProfile={profile ?? {}}
+            mode={isOnboarded ? "edit" : "create"}
+            onSubmitAction={saveProfileAction}
+            hideAvatarInput
+          />
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
             <a href="/me" className="text-gray-700 underline underline-offset-4 hover:no-underline">
