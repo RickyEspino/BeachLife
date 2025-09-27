@@ -2,16 +2,6 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
-type CookieSetOptions = {
-  domain?: string;
-  expires?: Date;
-  httpOnly?: boolean;
-  maxAge?: number;
-  path?: string;
-  sameSite?: "lax" | "strict" | "none";
-  secure?: boolean;
-};
-
 export const createSupabaseServerClient = () => {
   const cookieStore = cookies();
 
@@ -20,14 +10,20 @@ export const createSupabaseServerClient = () => {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        // Read all cookies Supabase may need
+        getAll() {
+          // Next.js cookies().getAll() => { name, value }[]
+          return cookieStore.getAll().map((c) => ({
+            name: c.name,
+            value: c.value,
+          }));
         },
-        set(name: string, value: string, options: CookieSetOptions) {
-          cookieStore.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieSetOptions) {
-          cookieStore.set({ name, value: "", ...options });
+        // Set (or update) cookies Supabase asks to write
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            // Next.js accepts (name, value, options)
+            cookieStore.set(name, value, options);
+          });
         },
       },
     }
