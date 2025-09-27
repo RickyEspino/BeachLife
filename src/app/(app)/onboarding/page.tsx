@@ -1,4 +1,3 @@
-// src/app/(app)/onboarding/page.tsx
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
 import OnboardingForm from "@/components/OnboardingForm";
@@ -16,6 +15,7 @@ export default async function OnboardingPage({ searchParams }: Props) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase
@@ -26,9 +26,9 @@ export default async function OnboardingPage({ searchParams }: Props) {
 
   const edit = strParam(searchParams?.edit) === "1";
 
-  // Skip onboarding for existing users unless explicitly editing
-  if (!edit && profile?.username) {
-    redirect("/now"); // or "/me" if you prefer
+  // If user already finished onboarding AND not explicitly editing, go to /now
+  if (profile?.username && !edit) {
+    redirect("/now");
   }
 
   return (
@@ -37,14 +37,15 @@ export default async function OnboardingPage({ searchParams }: Props) {
         <h1 className="text-2xl font-semibold mb-4">
           {profile?.username ? "Edit profile" : "Let’s get you set up"}
         </h1>
+
         <OnboardingForm
           initialProfile={profile ?? {}}
           mode={profile?.username ? "edit" : "create"}
         />
-        {/* Optional helper link back to dashboard */}
+
         <div className="mt-4 text-sm">
-          <a href="/me" className="text-gray-700 underline hover:no-underline">
-            Back to dashboard
+          <a href="/now" className="text-gray-700 underline hover:no-underline">
+            Back to Now
           </a>
         </div>
       </div>
