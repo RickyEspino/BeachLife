@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useMemo, useState } from "react";
+import Link from "next/link";
 
 type HistoryRow = {
   id: string;
@@ -35,8 +36,9 @@ export default function MeDashboard(props: {
   isAdmin?: boolean;
   adminHref?: string;
 
-  // New: avatar update action
+  // Avatar controls
   updateAvatarAction: (formData: FormData) => void | Promise<void>;
+  removeAvatarAction: (formData?: FormData) => void | Promise<void>;
 }) {
   const {
     userEmail,
@@ -56,6 +58,7 @@ export default function MeDashboard(props: {
     isAdmin = false,
     adminHref = "/admin",
     updateAvatarAction,
+    removeAvatarAction,
   } = props;
 
   const [tab, setTab] = useState<"profile" | "wallet" | "activity">("wallet");
@@ -91,7 +94,14 @@ export default function MeDashboard(props: {
           <div className="flex-1">
             <p className="text-white/80 text-sm">Welcome back</p>
             <h3 className="text-xl font-semibold">{username}</h3>
-            <p className="text-white/90">Level {level}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-white/90">Level {level}</p>
+              {isAdmin && (
+                <span className="rounded-md bg-black/30 px-2 py-0.5 text-xs font-medium">
+                  Admin
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Progress ring */}
@@ -128,8 +138,22 @@ export default function MeDashboard(props: {
           </div>
         </div>
 
-        <div className="mt-3 text-sm text-white/90">
-          {totalPoints} / {nextMilestone} BP to next level
+        <div className="mt-3 flex items-center justify-between text-sm text-white/90">
+          <div>
+            {totalPoints} / {nextMilestone} BP to next level
+          </div>
+          {isAdmin && (
+            <Link
+              href={adminHref}
+              className="inline-flex items-center gap-2 rounded-lg bg-black/40 px-3 py-1.5 text-white hover:bg-black/50 transition"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
+                <path d="M12 3l7 4v5c0 4.418-2.686 8.418-7 10-4.314-1.582-7-5.582-7-10V7l7-4z" fill="currentColor" />
+                <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Admin
+            </Link>
+          )}
         </div>
       </div>
 
@@ -151,6 +175,7 @@ export default function MeDashboard(props: {
               isAdmin={isAdmin}
               adminHref={adminHref}
               updateAvatarAction={updateAvatarAction}
+              removeAvatarAction={removeAvatarAction}
             />
           )}
 
@@ -202,19 +227,21 @@ function ProfilePanel({
   isAdmin,
   adminHref,
   updateAvatarAction,
+  removeAvatarAction,
 }: {
   username: string;
   userEmail: string;
   avatarUrl: string;
   hasAvatar: boolean;
-  isAdmin?: boolean;
-  adminHref?: string;
+  isAdmin: boolean;
+  adminHref: string;
   updateAvatarAction: (formData: FormData) => void | Promise<void>;
+  removeAvatarAction: (formData?: FormData) => void | Promise<void>;
 }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-[auto,1fr] items-start">
-      {/* Avatar + Admin badge inline */}
-      <div className="flex items-center gap-2">
+    <div className="grid gap-4">
+      {/* Avatar row with clickable Admin badge right next to it */}
+      <div className="flex items-center gap-3">
         {avatarUrl ? (
           <img
             src={avatarUrl}
@@ -226,53 +253,55 @@ function ProfilePanel({
         )}
 
         {isAdmin && (
-          <a
-            href={adminHref ?? "/admin"}
-            className="inline-flex items-center gap-1 rounded-md bg-black/80 px-2 py-1 text-xs font-semibold text-white hover:bg-black transition focus:outline-none focus:ring-2 focus:ring-black/30"
-            aria-label="Open Admin"
+          <Link
+            href={adminHref}
+            className="rounded-md border border-black/10 bg-black/5 px-2 py-1 text-xs font-medium hover:bg-black/10"
+            title="Go to Admin"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden>
-              <path d="M12 3l7 4v5c0 4.418-2.686 8.418-7 10-4.314-1.582-7-5.582-7-10V7l7-4z" fill="currentColor" />
-              <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
             Admin
-          </a>
+          </Link>
         )}
       </div>
 
-      {/* Profile fields + inline avatar upload */}
+      {/* Basic profile info */}
       <div>
         <div className="text-sm text-gray-500">Username</div>
         <div className="font-medium">{username}</div>
-
         <div className="mt-2 text-sm text-gray-500">Email</div>
         <div className="font-medium">{userEmail}</div>
+      </div>
 
-        {/* Inline avatar uploader (no redirect) */}
-        <form
-          action={updateAvatarAction}
-          className="mt-4 flex items-center gap-2"
-          encType="multipart/form-data"
-        >
+      {/* Inline avatar uploader (no redirect) */}
+      <div className="rounded-xl border p-4">
+        <div className="font-medium">Change avatar</div>
+        <p className="text-sm text-gray-600 mt-1">
+          Upload a square image (PNG or JPG) for best results.
+        </p>
+        <form action={updateAvatarAction} className="mt-3 flex items-center gap-2">
           <input
             type="file"
             name="avatar"
             accept="image/*"
-            className="block w-full text-sm file:mr-3 file:rounded-md file:border file:px-3 file:py-1.5 file:text-sm file:font-medium file:bg-gray-100 file:hover:bg-gray-200"
+            className="block w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded-md file:border file:border-gray-200 file:bg-white file:text-sm file:font-medium hover:file:bg-gray-50"
+            required
           />
           <button
             type="submit"
-            className="rounded-lg bg-black text-white px-3 py-2 text-sm font-medium"
+            className="rounded-lg bg-black text-white px-4 py-2 text-sm font-medium"
           >
-            Update avatar
+            Upload
           </button>
         </form>
 
-        {/* Removed the link that previously routed to "now" */}
-        {!hasAvatar && (
-          <p className="mt-2 text-xs text-gray-500">
-            Tip: add an avatar to unlock the one-time profile bonus.
-          </p>
+        {hasAvatar && (
+          <form action={removeAvatarAction} className="mt-2">
+            <button
+              type="submit"
+              className="text-sm text-red-600 hover:text-red-700 underline underline-offset-4"
+            >
+              Remove current avatar
+            </button>
+          </form>
         )}
       </div>
     </div>
@@ -292,67 +321,68 @@ function WalletPanel({
   claimDailyAction: (formData: FormData) => void | Promise<void>;
   claimProfileCompleteAction: (formData: FormData) => void | Promise<void>;
 }) {
+  const showDaily = canClaimDaily;
+  const showProfileComplete = canClaimProfileComplete;
+  const nothingToClaim = !showDaily && !showProfileComplete;
+
   return (
     <div className="space-y-4">
+      {/* Points summary */}
       <div className="rounded-lg border p-4">
         <div className="text-sm text-gray-500">Total Points</div>
         <div className="mt-1 text-3xl font-semibold">{totalPoints.toLocaleString()}</div>
       </div>
 
-      {/* Daily check-in */}
-      <div className="rounded-xl border p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-full border grid place-items-center">
-            <span className="font-semibold">+500</span>
-          </div>
-          <div>
-            <div className="font-medium">Daily check-in</div>
-            <div className="text-sm text-gray-600">
-              Come back every day to earn 500 points.
+      {/* Claimables (hidden once completed) */}
+      {showDaily && (
+        <div className="rounded-xl border p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full border grid place-items-center">
+              <span className="font-semibold">+500</span>
+            </div>
+            <div>
+              <div className="font-medium">Daily check-in</div>
+              <div className="text-sm text-gray-600">
+                Come back every day to earn 500 points.
+              </div>
             </div>
           </div>
-        </div>
 
-        {canClaimDaily ? (
           <form action={claimDailyAction}>
             <button className="rounded-lg bg-black text-white px-4 py-2 font-medium">
               Claim +500
             </button>
           </form>
-        ) : (
-          <div className="rounded-lg border px-4 py-2 font-medium text-center">
-            Already claimed today
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* One-time profile complete */}
-      <div className="rounded-xl border p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-full border grid place-items-center">
-            <span className="font-semibold">+100</span>
-          </div>
-          <div>
-            <div className="font-medium">Profile complete</div>
-            <div className="text-sm text-gray-600">
-              Add an avatar and a username to earn a one-time bonus.
+      {showProfileComplete && (
+        <div className="rounded-xl border p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full border grid place-items-center">
+              <span className="font-semibold">+100</span>
+            </div>
+            <div>
+              <div className="font-medium">Profile complete</div>
+              <div className="text-sm text-gray-600">
+                Add an avatar and a username to earn a one-time bonus.
+              </div>
             </div>
           </div>
-        </div>
 
-        {canClaimProfileComplete ? (
           <form action={claimProfileCompleteAction}>
             <button className="rounded-lg bg-black text-white px-4 py-2 font-medium">
               Claim +100
             </button>
           </form>
-        ) : (
-          <div className="rounded-lg border px-4 py-2 font-medium text-center">
-            {/** No link; finish inside Profile tab now */}
-            Already claimed / edit in Profile tab
-          </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {nothingToClaim && (
+        <div className="rounded-xl border p-5 text-center text-sm text-gray-600">
+          🎉 All caught up — no claimables right now.
+        </div>
+      )}
     </div>
   );
 }
@@ -380,15 +410,9 @@ function ActivityPanel({ history }: { history: HistoryRow[] }) {
         <tbody>
           {history.map((row) => (
             <tr key={row.id} className="border-t">
-              <td className="px-4 py-2">
-                {new Date(row.created_at).toLocaleString()}
-              </td>
-              <td className="px-4 py-2 capitalize">
-                {row.type.replace(/_/g, " ")}
-              </td>
-              <td className="px-4 py-2 text-gray-600">
-                {row.metadata?.reason ?? "—"}
-              </td>
+              <td className="px-4 py-2">{new Date(row.created_at).toLocaleString()}</td>
+              <td className="px-4 py-2 capitalize">{row.type.replace(/_/g, " ")}</td>
+              <td className="px-4 py-2 text-gray-600">{row.metadata?.reason ?? "—"}</td>
               <td className="px-4 py-2 text-right font-medium">
                 {row.points > 0 ? `+${row.points}` : row.points}
               </td>

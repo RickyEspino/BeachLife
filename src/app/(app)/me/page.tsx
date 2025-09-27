@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
 import { awardPointsOnce, awardPointsOncePerDay } from "@/app/actions/points";
 import MeDashboard from "./MeDashboard";
@@ -29,7 +30,7 @@ export default async function MePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Profile (+ role for admin button)
+  // Profile (+ role for admin badge/button)
   const { data: profile } = await supabase
     .from("profiles")
     .select("username, avatar_url, role")
@@ -63,12 +64,13 @@ export default async function MePage() {
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(25);
+
   const history = (historyRaw ?? []) as HistoryRow[];
 
   // --- Claimables ---
-
-  // One-time: Profile complete (+100) if avatar exists and not yet claimed
   const hasAvatar = !!profile.avatar_url;
+
+  // Profile complete (+100) if avatar exists and not yet claimed
   const { data: profileCompleteEvent } = await supabase
     .from("point_events")
     .select("id")
@@ -93,51 +95,59 @@ export default async function MePage() {
     .maybeSingle();
   const canClaimDaily = !todayCheckin;
 
-  // ---------- Server actions (must return void) ----------
+  // ---------- Server actions (void return) ----------
   async function claimProfileCompleteAction() {
     "use server";
     await awardPointsOnce("profile_complete", 100, {
       reason: "Completed profile (username + avatar)",
     });
+    revalidatePath("/me");
   }
 
   async function claimDailyAction() {
     "use server";
     await awardPointsOncePerDay("daily_checkin", 500, { reason: "Daily check-in" });
+    revalidatePath("/me");
   }
 
-  // New: update avatar (upload to storage + save URL)
+  // Avatar: upload / remove
   async function updateAvatarAction(formData: FormData) {
     "use server";
-    const supabase = createSupabaseServerClient();
+    const supa = createSupabaseServerClient();
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      redirect("/login");
-      return;
-    }
+      data: { user: u },
+    } = await supa.auth.getUser();
+    if (!u) return;
 
     const file = formData.get("avatar") as File | null;
     if (!file || file.size === 0) return;
 
-    const ext = file.name.split(".").pop() || "png";
-    const path = `avatars/${user.id}/${Date.now()}.${ext}`;
+    const path = `${u.id}/${Date.now()}_${file.name}`;
+    const { error: upErr } = await supa.storage.from("avatars").upload(path, file, {
+      upsert: true,
+      cacheControl: "3600",
+    });
+    if (upErr) return;
 
-    // Upload to storage (make sure you created a bucket named "avatars")
-    const { error: uploadErr } = await supabase.storage
-      .from("avatars")
-      .upload(path, file, { upsert: true, contentType: file.type || "image/png" });
-    if (uploadErr) return;
+    const { data: pub } = supa.storage.from("avatars").getPublicUrl(path);
+    const publicUrl = pub?.publicUrl ?? null;
 
-    const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
-    const publicUrl = pub?.publicUrl;
+    await supa.from("profiles").update({ avatar_url: publicUrl }).eq("id", u.id);
 
-    if (publicUrl) {
-      await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", user.id);
-    }
+    revalidatePath("/me");
   }
-  // -------------------------------------------------------
+
+  async function removeAvatarAction() {
+    "use server";
+    const supa = createSupabaseServerClient();
+    const {
+      data: { user: u },
+    } = await supa.auth.getUser();
+    if (!u) return;
+    await supa.from("profiles").update({ avatar_url: null }).eq("id", u.id);
+    revalidatePath("/me");
+  }
+  // --------------------------------------------------
 
   // Level calc (every 1000 BP = new level)
   const levelSize = 1000;
@@ -170,8 +180,9 @@ export default async function MePage() {
           // Admin controls
           isAdmin={isAdmin}
           adminHref="/admin"
-          // New: inline avatar edit
+          // Avatar controls
           updateAvatarAction={updateAvatarAction}
+          removeAvatarAction={removeAvatarAction}
         />
       </div>
     </main>
