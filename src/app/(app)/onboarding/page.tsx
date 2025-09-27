@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
-import OnboardingForm from "@/components/OnboardingForm";
 
 type Props = { searchParams?: { [k: string]: string | string[] | undefined } };
 
@@ -41,15 +40,12 @@ export default async function OnboardingPage({ searchParams }: Props) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) {
-      redirect("/login");
-    }
+    if (!user) redirect("/login");
 
     const usernameRaw = String(formData.get("username") ?? "").trim();
-    const username = usernameRaw.replace(/\s+/g, "_").slice(0, 40); // simple sanitize
+    const username = usernameRaw.replace(/\s+/g, "_").slice(0, 40);
 
     if (!username) {
-      // If empty, just reload page; you can enhance with form validation later
       revalidatePath("/(app)/onboarding");
       return;
     }
@@ -68,7 +64,7 @@ export default async function OnboardingPage({ searchParams }: Props) {
     redirect("/now");
   }
 
-  /* ----------------- avatar upload/remove (from earlier) ----------------- */
+  // Avatar upload/remove (same UX you have elsewhere)
   async function uploadAvatarAction(formData: FormData) {
     "use server";
     const supabase = createSupabaseServerClient();
@@ -79,7 +75,7 @@ export default async function OnboardingPage({ searchParams }: Props) {
 
     const file = formData.get("avatar") as File | null;
     if (!file || file.size === 0) return;
-    if (file.size > 5 * 1024 * 1024) return; // 5MB cap
+    if (file.size > 5 * 1024 * 1024) return;
 
     const ext = (file.name.split(".").pop() || "png").toLowerCase();
     const path = `avatars/${user.id}/avatar-${Date.now()}.${ext}`;
@@ -96,11 +92,7 @@ export default async function OnboardingPage({ searchParams }: Props) {
       if (publicUrl) {
         await supabase
           .from("profiles")
-          .upsert({
-            id: user.id,
-            avatar_url: publicUrl,
-            updated_at: new Date().toISOString(),
-          });
+          .upsert({ id: user.id, avatar_url: publicUrl, updated_at: new Date().toISOString() });
 
         revalidatePath("/(app)/onboarding");
         revalidatePath("/(app)/me");
@@ -124,7 +116,6 @@ export default async function OnboardingPage({ searchParams }: Props) {
     revalidatePath("/(app)/onboarding");
     revalidatePath("/(app)/me");
   }
-  /* ---------------------------------------------------------------------- */
 
   const hasAvatar = !!profile?.avatar_url;
 
@@ -218,7 +209,7 @@ export default async function OnboardingPage({ searchParams }: Props) {
         </div>
       </section>
 
-      {/* Intro cards + Form */}
+      {/* Username form (inlined) */}
       <section className="mx-auto w-full max-w-xl px-5 pt-5 pb-[calc(env(safe-area-inset-bottom,0px)+24px)]">
         <div className="rounded-2xl border bg-white p-5 shadow-sm">
           <h2 className="text-lg sm:text-xl font-semibold mb-1">
@@ -228,12 +219,22 @@ export default async function OnboardingPage({ searchParams }: Props) {
             Add your username. You can change this anytime.
           </p>
 
-          <OnboardingForm
-            initialProfile={profile ?? {}}
-            mode={isOnboarded ? "edit" : "create"}
-            onSubmitAction={saveProfileAction}
-            hideAvatarInput
-          />
+          <form action={saveProfileAction} className="space-y-4" noValidate>
+            <div>
+              <label className="block text-sm text-gray-600">Username</label>
+              <input
+                name="username"
+                defaultValue={profile?.username ?? ""}
+                className="mt-1 w-full rounded border px-3 py-2"
+                placeholder="beachfan123"
+                required
+              />
+            </div>
+
+            <button className="rounded-lg bg-black px-4 py-2 font-medium text-white">
+              {isOnboarded ? "Save changes" : "Complete onboarding"}
+            </button>
+          </form>
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
             <a href="/me" className="text-gray-700 underline underline-offset-4 hover:no-underline">
