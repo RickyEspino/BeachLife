@@ -1,3 +1,4 @@
+// src/app/(app)/now/page.tsx
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
 import { Claimables } from "@/components/Claimables";
 import { awardPointsOnce, awardPointsOncePerDay } from "@/app/actions/points";
@@ -66,17 +67,19 @@ export default async function NowPage() {
 
   const canClaimProfileComplete = hasAvatar && !profileCompleteEvent;
 
-  // ---- server actions (void) ----
-  async function claimDailyAction(_: FormData) {
+  // ---- server actions (must return void) ----
+  async function claimDailyAction(_formData: FormData): Promise<void> {
     "use server";
     await awardPointsOncePerDay("daily_checkin", 500, { reason: "Daily check-in" });
   }
 
-  async function claimProfileCompleteAction(_: FormData) {
+  async function claimProfileCompleteAction(_formData: FormData): Promise<void> {
     "use server";
-    await awardPointsOnce("profile_complete", 100, { reason: "Completed profile (username + avatar)" });
+    await awardPointsOnce("profile_complete", 100, {
+      reason: "Completed profile (username + avatar)",
+    });
   }
-  // -------------------------------
+  // ------------------------------------------
 
   return (
     <main className="p-6">
