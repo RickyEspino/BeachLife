@@ -1,3 +1,4 @@
+// src/app/(app)/admin/page.tsx
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
 import { createSupabaseServiceClient } from "@/lib/supabase/serviceClient";
@@ -8,10 +9,14 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = { created?: string; deleted?: string; error?: string };
 
+function isPromise<T>(val: unknown): val is Promise<T> {
+  return !!val && typeof (val as Promise<T>).then === "function";
+}
+
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams?: Promise<SearchParams> | SearchParams;
+  searchParams?: SearchParams | Promise<SearchParams>;
 }) {
   const supabase = createSupabaseServerClient();
 
@@ -32,8 +37,12 @@ export default async function AdminPage({
     redirect("/me");
   }
 
-  // Read query flags (Next 15 may pass a Promise)
-  const sp = (await (searchParams as any)) ?? {};
+  // Normalize search params without using `any`
+  const sp: SearchParams = searchParams
+    ? isPromise<SearchParams>(searchParams)
+      ? await searchParams
+      : searchParams
+    : {};
 
   // List users via service role (server-side only)
   const admin = createSupabaseServiceClient();
