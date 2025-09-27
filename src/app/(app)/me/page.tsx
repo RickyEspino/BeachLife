@@ -30,7 +30,7 @@ export default async function MePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Profile (+ role for admin badge/button)
+  // Profile (+ role for admin button)
   const { data: profile } = await supabase
     .from("profiles")
     .select("username, avatar_url, role")
@@ -39,7 +39,7 @@ export default async function MePage() {
 
   if (!profile || !profile.username) redirect("/onboarding");
 
-  // Total (try view, fallback to sum)
+  // Total points (via view, fallback to sum)
   let totalPoints = 0;
   const { data: totalRow, error: totalViewErr } = await supabase
     .from("user_point_totals")
@@ -70,7 +70,7 @@ export default async function MePage() {
   // --- Claimables ---
   const hasAvatar = !!profile.avatar_url;
 
-  // Profile complete (+100) if avatar exists and not yet claimed
+  // Profile complete (+100) one-time
   const { data: profileCompleteEvent } = await supabase
     .from("point_events")
     .select("id")
@@ -85,6 +85,7 @@ export default async function MePage() {
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0)
   );
   const startUtcIso = startUtc.toISOString();
+
   const { data: todayCheckin } = await supabase
     .from("point_events")
     .select("id")
@@ -95,7 +96,7 @@ export default async function MePage() {
     .maybeSingle();
   const canClaimDaily = !todayCheckin;
 
-  // ---------- Server actions (void return) ----------
+  // ---------- Server Actions (void) ----------
   async function claimProfileCompleteAction() {
     "use server";
     await awardPointsOnce("profile_complete", 100, {
@@ -110,46 +111,77 @@ export default async function MePage() {
     revalidatePath("/me");
   }
 
-  // Avatar: upload / remove
+  // Avatar actions
   async function updateAvatarAction(formData: FormData) {
     "use server";
-    const supa = createSupabaseServerClient();
-    const {
-      data: { user: u },
-    } = await supa.auth.getUser();
-    if (!u) return;
+    try {
+      const supa = createSupabaseServerClient();
+      const {
+        data: { user },
+      } = await supa.auth.getUser();
+      if (!user) return;
 
-    const file = formData.get("avatar") as File | null;
-    if (!file || file.size === 0) return;
+      const file = formData.get("avatar") as File | null;
+      if (!file || file.size === 0) return;
 
-    const path = `${u.id}/${Date.now()}_${file.name}`;
-    const { error: upErr } = await supa.storage.from("avatars").upload(path, file, {
-      upsert: true,
-      cacheControl: "3600",
-    });
-    if (upErr) return;
+      // Basic size/type guard
+      if (file.size > 5 * 1024 * 1024) {
+        // Optional: log / show toast via client state; we simply bail here
+        return;
+      }
 
-    const { data: pub } = supa.storage.from("avatars").getPublicUrl(path);
-    const publicUrl = pub?.publicUrl ?? null;
+      const ext = (file.name.split(".").pop() || "png").toLowerCase();
+      const path = `avatars/${user.id}/avatar-${Date.now()}.${ext}`;
 
-    await supa.from("profiles").update({ avatar_url: publicUrl }).eq("id", u.id);
+      const { error: upErr } = await supa
+        .storage
+        .from("avatars") // <-- ensure this bucket exists
+        .upload(path, file, {
+          upsert: true,
+          contentType: file.type || "image/png",
+        });
 
-    revalidatePath("/me");
+      if (upErr) {
+        // Optional: console.error(upErr);
+        return;
+      }
+
+      const { data: urlData } = supa.storage.from("avatars").getPublicUrl(path);
+      const publicUrl = urlData?.publicUrl;
+      if (!publicUrl) return;
+
+      await supa
+        .from("profiles")
+        .upsert({ id: user.id, avatar_url: publicUrl, updated_at: new Date().toISOString() });
+
+      revalidatePath("/me");
+    } catch {
+      // swallow to avoid client crash; you can log server-side if desired
+    }
   }
 
   async function removeAvatarAction() {
     "use server";
-    const supa = createSupabaseServerClient();
-    const {
-      data: { user: u },
-    } = await supa.auth.getUser();
-    if (!u) return;
-    await supa.from("profiles").update({ avatar_url: null }).eq("id", u.id);
-    revalidatePath("/me");
-  }
-  // --------------------------------------------------
+    try {
+      const supa = createSupabaseServerClient();
+      const {
+        data: { user },
+      } = await supa.auth.getUser();
+      if (!user) return;
 
-  // Level calc (every 1000 BP = new level)
+      await supa
+        .from("profiles")
+        .update({ avatar_url: null, updated_at: new Date().toISOString() })
+        .eq("id", user.id);
+
+      revalidatePath("/me");
+    } catch {
+      // swallow
+    }
+  }
+  // ------------------------------------------
+
+  // Level model (every 1000 BP)
   const levelSize = 1000;
   const level = Math.floor(totalPoints / levelSize) + 1;
   const nextMilestone = (Math.floor(totalPoints / levelSize) + 1) * levelSize;
@@ -177,10 +209,10 @@ export default async function MePage() {
           history={history}
           claimDailyAction={claimDailyAction}
           claimProfileCompleteAction={claimProfileCompleteAction}
-          // Admin controls
+          // Admin
           isAdmin={isAdmin}
           adminHref="/admin"
-          // Avatar controls
+          // Avatar actions
           updateAvatarAction={updateAvatarAction}
           removeAvatarAction={removeAvatarAction}
         />

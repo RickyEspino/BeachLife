@@ -78,7 +78,7 @@ export default function MeDashboard(props: {
       {/* Header / hero card */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#7C6FC5]/90 via-[#2EC4B6]/90 to-[#FF6A5A]/90 text-white p-5 shadow">
         <div className="absolute -top-10 -left-10 w-40 h-40 bg-white/15 rounded-full blur-2xl" />
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {avatarUrl ? (
             <img
               src={avatarUrl}
@@ -91,17 +91,21 @@ export default function MeDashboard(props: {
             </div>
           )}
 
-          <div className="flex-1">
+          {/* Admin badge right next to avatar */}
+          {isAdmin && (
+            <Link
+              href={adminHref}
+              className="rounded-md border border-white/30 bg-white/10 px-2 py-0.5 text-xs font-medium hover:bg-white/20"
+              title="Go to Admin"
+            >
+              Admin
+            </Link>
+          )}
+
+          <div className="flex-1 min-w-0">
             <p className="text-white/80 text-sm">Welcome back</p>
-            <h3 className="text-xl font-semibold">{username}</h3>
-            <div className="flex items-center gap-2">
-              <p className="text-white/90">Level {level}</p>
-              {isAdmin && (
-                <span className="rounded-md bg-black/30 px-2 py-0.5 text-xs font-medium">
-                  Admin
-                </span>
-              )}
-            </div>
+            <h3 className="text-xl font-semibold truncate">{username}</h3>
+            <p className="text-white/90">Level {level}</p>
           </div>
 
           {/* Progress ring */}
@@ -240,7 +244,7 @@ function ProfilePanel({
 }) {
   return (
     <div className="grid gap-4">
-      {/* Avatar row with clickable Admin badge right next to it */}
+      {/* Avatar + Admin badge row */}
       <div className="flex items-center gap-3">
         {avatarUrl ? (
           <img
@@ -271,13 +275,18 @@ function ProfilePanel({
         <div className="font-medium">{userEmail}</div>
       </div>
 
-      {/* Inline avatar uploader (no redirect) */}
+      {/* Inline avatar uploader */}
       <div className="rounded-xl border p-4">
         <div className="font-medium">Change avatar</div>
         <p className="text-sm text-gray-600 mt-1">
           Upload a square image (PNG or JPG) for best results.
         </p>
-        <form action={updateAvatarAction} className="mt-3 flex items-center gap-2">
+        <form
+          action={updateAvatarAction}
+          method="post"
+          encType="multipart/form-data"
+          className="mt-3 flex items-center gap-2"
+        >
           <input
             type="file"
             name="avatar"
@@ -294,7 +303,7 @@ function ProfilePanel({
         </form>
 
         {hasAvatar && (
-          <form action={removeAvatarAction} className="mt-2">
+          <form action={removeAvatarAction} method="post" className="mt-2">
             <button
               type="submit"
               className="text-sm text-red-600 hover:text-red-700 underline underline-offset-4"
