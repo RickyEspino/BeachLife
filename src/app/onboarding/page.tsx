@@ -1,30 +1,25 @@
 // src/app/onboarding/page.tsx
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
-import { OnboardingForm } from "@/components/OnboardingForm";
+import OnboardingForm from "@/components/OnboardingForm";
 
 export default async function OnboardingPage() {
   const supabase = createSupabaseServerClient();
 
-  // Require auth
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Load profile
   const { data: profile } = await supabase
     .from("profiles")
     .select("username, avatar_url")
     .eq("id", user.id)
     .maybeSingle();
 
-  // ✅ If the user already completed onboarding (has a username), skip it
-  if (profile?.username) {
-    redirect("/me");
-  }
+  // Skip onboarding if already completed
+  if (profile?.username) redirect("/me");
 
-  // Prefill if any partial data exists
   const initialUsername = profile?.username ?? "";
   const initialAvatarUrl = profile?.avatar_url ?? "";
 
