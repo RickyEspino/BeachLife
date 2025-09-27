@@ -10,9 +10,7 @@ type IconType = string | ComponentType<SVGProps<SVGSVGElement>>;
 
 function Icon({ icon, active }: { icon?: IconType; active: boolean }) {
   if (!icon) return null;
-  if (typeof icon === "string") {
-    return <span aria-hidden="true">{icon}</span>;
-  }
+  if (typeof icon === "string") return <span aria-hidden="true">{icon}</span>;
   const LucideIcon = icon;
   return (
     <LucideIcon
@@ -26,7 +24,7 @@ function Icon({ icon, active }: { icon?: IconType; active: boolean }) {
 }
 
 type BottomTabsProps = {
-  tabs?: Tab[];     // optional override; defaults to TABS from lib/nav
+  tabs?: Tab[];
   className?: string;
 };
 
@@ -43,7 +41,7 @@ export default function BottomTabs({ tabs = TABS, className = "" }: BottomTabsPr
         {tabs.map((tab) => {
           const isActive =
             pathname === tab.href ||
-            (tab.matchPrefix && pathname?.startsWith(tab.matchPrefix));
+            (Boolean(tab.matchPrefix) && Boolean(pathname?.startsWith(tab.matchPrefix!)));
 
           return (
             <li key={tab.href}>
