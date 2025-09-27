@@ -3,6 +3,7 @@
 
 import { useState, useMemo, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browserClient";
 
 type Props = {
@@ -14,6 +15,7 @@ type Props = {
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 
+/** Downscale large images client-side (free-plan friendly). */
 async function downscaleImageToJpeg(file: File, maxSize = 512): Promise<File> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -60,7 +62,7 @@ export function OnboardingForm({
   const supabase = useMemo(createSupabaseBrowserClient, []);
   const [username, setUsername] = useState(initialUsername);
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string>(initialAvatarUrl);
+  const [preview, setPreview] = useState<string>(initialAvatarUrl); // can be blob: or https:
   const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
   const [message, setMessage] = useState("");
 
@@ -106,6 +108,7 @@ export function OnboardingForm({
 
         const { data: pub } = await supabase.storage.from("avatars").getPublicUrl(path);
         avatarUrl = pub.publicUrl;
+        setPreview(avatarUrl); // show uploaded image
       }
 
       const { error: upsertErr } = await supabase.from("profiles").upsert(
@@ -132,10 +135,20 @@ export function OnboardingForm({
 
   return (
     <form onSubmit={saveProfile} className="space-y-5" noValidate>
+      {/* Avatar picker */}
       <div className="flex items-center gap-4">
-        <div className="h-16 w-16 rounded-full overflow-hidden border bg-gray-50">
+        <div className="h-16 w-16 rounded-full overflow-hidden border bg-gray-50 relative">
           {preview ? (
-            <img src={preview} alt="Avatar preview" className="h-full w-full object-cover" />
+            <Image
+              src={preview}
+              alt="Avatar preview"
+              fill
+              sizes="64px"
+              className="object-cover"
+              // Allows blob: URLs and avoids optimization in dev for arbitrary origins
+              unoptimized
+              priority
+            />
           ) : (
             <div className="h-full w-full flex items-center justify-center text-xs text-gray-400">
               No avatar
@@ -144,11 +157,17 @@ export function OnboardingForm({
         </div>
         <div>
           <label className="block text-sm font-medium">Avatar</label>
-          <input type="file" accept="image/*" onChange={onFileChange} className="mt-1 block text-sm" />
+          <input
+            type="file"
+            accept="image/*"
+            onChange={onFileChange}
+            className="mt-1 block text-sm"
+          />
           <p className="mt-1 text-xs text-gray-500">JPG/PNG/WebP, ~5MB max recommended.</p>
         </div>
       </div>
 
+      {/* Username */}
       <div>
         <label className="block text-sm font-medium">Username</label>
         <input
@@ -172,12 +191,18 @@ export function OnboardingForm({
         >
           {status === "saving" ? "Saving…" : "Save & Continue"}
         </button>
-        <button type="button" onClick={() => router.push("/me")} className="rounded-lg border px-4 py-2 font-medium">
+        <button
+          type="button"
+          onClick={() => router.push("/me")}
+          className="rounded-lg border px-4 py-2 font-medium"
+        >
           Skip for now
         </button>
       </div>
 
-      {status === "error" && message && <div className="text-sm text-red-600">{message}</div>}
+      {status === "error" && message && (
+        <div className="text-sm text-red-600">{message}</div>
+      )}
     </form>
   );
 }
