@@ -63,6 +63,7 @@ export default async function MePage() {
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(25);
+
   const history = (historyRaw ?? []) as HistoryRow[];
 
   // --- Claimables ---
@@ -79,7 +80,9 @@ export default async function MePage() {
 
   // Daily check-in (+500) once per UTC day
   const now = new Date();
-  const startUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+  const startUtc = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0)
+  );
   const startUtcIso = startUtc.toISOString();
   const { data: todayCheckin } = await supabase
     .from("point_events")
@@ -133,7 +136,7 @@ export default async function MePage() {
           history={history}
           claimDailyAction={claimDailyAction}
           claimProfileCompleteAction={claimProfileCompleteAction}
-          // NEW: admin control
+          // Admin controls
           isAdmin={isAdmin}
           adminHref="/admin"
         />

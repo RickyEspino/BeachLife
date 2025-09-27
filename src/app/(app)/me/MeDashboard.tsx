@@ -31,7 +31,7 @@ export default function MeDashboard(props: {
   claimDailyAction: (formData: FormData) => void | Promise<void>;
   claimProfileCompleteAction: (formData: FormData) => void | Promise<void>;
 
-  // NEW
+  // Admin
   isAdmin?: boolean;
   adminHref?: string;
 }) {
@@ -87,12 +87,22 @@ export default function MeDashboard(props: {
           <div className="flex-1">
             <p className="text-white/80 text-sm">Welcome back</p>
             <h3 className="text-xl font-semibold">{username}</h3>
+
+            {/* Level + clickable Admin badge */}
             <div className="flex items-center gap-2">
               <p className="text-white/90">Level {level}</p>
               {isAdmin && (
-                <span className="rounded-md bg-black/30 px-2 py-0.5 text-xs font-medium">
+                <a
+                  href={adminHref}
+                  className="inline-flex items-center gap-1 rounded-md bg-black/35 px-2 py-0.5 text-[11px] font-semibold tracking-wide hover:bg-black/45 active:bg-black/55 transition focus:outline-none focus:ring-2 focus:ring-white/60"
+                  aria-label="Open Admin"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden>
+                    <path d="M12 3l7 4v5c0 4.418-2.686 8.418-7 10-4.314-1.582-7-5.582-7-10V7l7-4z" fill="currentColor" />
+                    <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                   Admin
-                </span>
+                </a>
               )}
             </div>
           </div>
@@ -131,23 +141,8 @@ export default function MeDashboard(props: {
           </div>
         </div>
 
-        <div className="mt-3 flex items-center justify-between text-sm text-white/90">
-          <div>
-            {totalPoints} / {nextMilestone} BP to next level
-          </div>
-
-          {isAdmin && (
-            <a
-              href={adminHref}
-              className="inline-flex items-center gap-2 rounded-lg bg-black/40 px-3 py-1.5 text-white hover:bg-black/50 transition"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
-                <path d="M12 3l7 4v5c0 4.418-2.686 8.418-7 10-4.314-1.582-7-5.582-7-10V7l7-4z" fill="currentColor" />
-                <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Admin
-            </a>
-          )}
+        <div className="mt-3 text-sm text-white/90">
+          {totalPoints} / {nextMilestone} BP to next level
         </div>
       </div>
 
@@ -223,7 +218,11 @@ function ProfilePanel({
   return (
     <div className="grid gap-4 sm:grid-cols-[auto,1fr] items-center">
       {avatarUrl ? (
-        <img src={avatarUrl} alt={`${username} avatar`} className="h-16 w-16 rounded-full object-cover border" />
+        <img
+          src={avatarUrl}
+          alt={`${username} avatar`}
+          className="h-16 w-16 rounded-full object-cover border"
+        />
       ) : (
         <div className="h-16 w-16 rounded-full border bg-gradient-to-br from-gray-100 to-gray-200" />
       )}
@@ -271,16 +270,22 @@ function WalletPanel({
           </div>
           <div>
             <div className="font-medium">Daily check-in</div>
-            <div className="text-sm text-gray-600">Come back every day to earn 500 points.</div>
+            <div className="text-sm text-gray-600">
+              Come back every day to earn 500 points.
+            </div>
           </div>
         </div>
 
         {canClaimDaily ? (
           <form action={claimDailyAction}>
-            <button className="rounded-lg bg-black text-white px-4 py-2 font-medium">Claim +500</button>
+            <button className="rounded-lg bg-black text-white px-4 py-2 font-medium">
+              Claim +500
+            </button>
           </form>
         ) : (
-          <div className="rounded-lg border px-4 py-2 font-medium text-center">Already claimed today</div>
+          <div className="rounded-lg border px-4 py-2 font-medium text-center">
+            Already claimed today
+          </div>
         )}
       </div>
 
@@ -292,16 +297,23 @@ function WalletPanel({
           </div>
           <div>
             <div className="font-medium">Profile complete</div>
-            <div className="text-sm text-gray-600">Add an avatar and a username to earn a one-time bonus.</div>
+            <div className="text-sm text-gray-600">
+              Add an avatar and a username to earn a one-time bonus.
+            </div>
           </div>
         </div>
 
         {canClaimProfileComplete ? (
           <form action={claimProfileCompleteAction}>
-            <button className="rounded-lg bg-black text-white px-4 py-2 font-medium">Claim +100</button>
+            <button className="rounded-lg bg-black text-white px-4 py-2 font-medium">
+              Claim +100
+            </button>
           </form>
         ) : (
-          <a href="/onboarding" className="rounded-lg border px-4 py-2 font-medium text-center">
+          <a
+            href="/onboarding"
+            className="rounded-lg border px-4 py-2 font-medium text-center"
+          >
             Finish profile
           </a>
         )}
@@ -333,9 +345,15 @@ function ActivityPanel({ history }: { history: HistoryRow[] }) {
         <tbody>
           {history.map((row) => (
             <tr key={row.id} className="border-t">
-              <td className="px-4 py-2">{new Date(row.created_at).toLocaleString()}</td>
-              <td className="px-4 py-2 capitalize">{row.type.replace(/_/g, " ")}</td>
-              <td className="px-4 py-2 text-gray-600">{row.metadata?.reason ?? "—"}</td>
+              <td className="px-4 py-2">
+                {new Date(row.created_at).toLocaleString()}
+              </td>
+              <td className="px-4 py-2 capitalize">
+                {row.type.replace(/_/g, " ")}
+              </td>
+              <td className="px-4 py-2 text-gray-600">
+                {row.metadata?.reason ?? "—"}
+              </td>
               <td className="px-4 py-2 text-right font-medium">
                 {row.points > 0 ? `+${row.points}` : row.points}
               </td>
