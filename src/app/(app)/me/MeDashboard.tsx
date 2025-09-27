@@ -1,8 +1,7 @@
-// src/app/(app)/me/MeDashboard.tsx
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 
 type HistoryRow = {
   id: string;
@@ -31,6 +30,10 @@ export default function MeDashboard(props: {
 
   claimDailyAction: (formData: FormData) => void | Promise<void>;
   claimProfileCompleteAction: (formData: FormData) => void | Promise<void>;
+
+  // NEW
+  isAdmin?: boolean;
+  adminHref?: string;
 }) {
   const {
     userEmail,
@@ -47,6 +50,8 @@ export default function MeDashboard(props: {
     history,
     claimDailyAction,
     claimProfileCompleteAction,
+    isAdmin = false,
+    adminHref = "/admin",
   } = props;
 
   const [tab, setTab] = useState<"profile" | "wallet" | "activity">("wallet");
@@ -82,7 +87,14 @@ export default function MeDashboard(props: {
           <div className="flex-1">
             <p className="text-white/80 text-sm">Welcome back</p>
             <h3 className="text-xl font-semibold">{username}</h3>
-            <p className="text-white/90">Level {level}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-white/90">Level {level}</p>
+              {isAdmin && (
+                <span className="rounded-md bg-black/30 px-2 py-0.5 text-xs font-medium">
+                  Admin
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Progress ring */}
@@ -118,8 +130,24 @@ export default function MeDashboard(props: {
             </div>
           </div>
         </div>
-        <div className="mt-3 text-sm text-white/90">
-          {totalPoints} / {nextMilestone} BP to next level
+
+        <div className="mt-3 flex items-center justify-between text-sm text-white/90">
+          <div>
+            {totalPoints} / {nextMilestone} BP to next level
+          </div>
+
+          {isAdmin && (
+            <a
+              href={adminHref}
+              className="inline-flex items-center gap-2 rounded-lg bg-black/40 px-3 py-1.5 text-white hover:bg-black/50 transition"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
+                <path d="M12 3l7 4v5c0 4.418-2.686 8.418-7 10-4.314-1.582-7-5.582-7-10V7l7-4z" fill="currentColor" />
+                <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Admin
+            </a>
+          )}
         </div>
       </div>
 
