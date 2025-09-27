@@ -11,9 +11,9 @@ export default function CheckEmailPage({
   return (
     <main className="min-h-[100dvh] flex items-center justify-center p-6">
       <div className="w-full max-w-md rounded-2xl border p-6 shadow-sm text-center">
-        <h1 className="text-2xl font-semibold">Check your email 📬</h1>
+        <h1 className="text-2xl font-semibold">Welcome to the BeachLife 🌴</h1>
         <p className="mt-3 text-gray-600">
-          We sent a magic sign-in link
+          Check your email 📬
           {email ? (
             <>
               {" "}to <span className="font-medium">{email}</span>.

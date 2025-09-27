@@ -18,7 +18,7 @@ export default async function OnboardingPage() {
     .maybeSingle();
 
   // Skip onboarding if already completed
-  if (profile?.username) redirect("/me");
+  if (profile?.username) redirect("/now");
 
   const initialUsername = profile?.username ?? "";
   const initialAvatarUrl = profile?.avatar_url ?? "";
