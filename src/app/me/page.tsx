@@ -67,12 +67,6 @@ export default async function MePage() {
     .eq("type", "profile_complete")
     .maybeSingle();
   const canClaimProfileComplete = hasAvatar && !profileCompleteEvent;
-  const claimProfileComplete = awardPointsOnce.bind(
-    null,
-    "profile_complete",
-    100,
-    { reason: "Completed profile (username + avatar)" }
-  );
 
   // Daily: Check-in (+500) once per day (UTC)
   const now = new Date();
@@ -89,12 +83,20 @@ export default async function MePage() {
     .maybeSingle();
 
   const canClaimDaily = !todayCheckin;
-  const claimDaily = awardPointsOncePerDay.bind(
-    null,
-    "daily_checkin",
-    500,
-    { reason: "Daily check-in" }
-  );
+
+  // ---------- Server Action Wrappers (return void) ----------
+  async function claimProfileCompleteAction() {
+    "use server";
+    await awardPointsOnce("profile_complete", 100, {
+      reason: "Completed profile (username + avatar)",
+    });
+  }
+
+  async function claimDailyAction() {
+    "use server";
+    await awardPointsOncePerDay("daily_checkin", 500, { reason: "Daily check-in" });
+  }
+  // ---------------------------------------------------------
 
   const initials = initialsFrom(profile.username, user.email || undefined);
 
@@ -161,7 +163,7 @@ export default async function MePage() {
             </div>
 
             {canClaimDaily ? (
-              <form action={claimDaily}>
+              <form action={claimDailyAction}>
                 <button className="rounded-lg bg-black text-white px-4 py-2 font-medium">
                   Claim +500
                 </button>
@@ -188,7 +190,7 @@ export default async function MePage() {
             </div>
 
             {canClaimProfileComplete ? (
-              <form action={claimProfileComplete}>
+              <form action={claimProfileCompleteAction}>
                 <button className="rounded-lg bg-black text-white px-4 py-2 font-medium">
                   Claim +100
                 </button>
