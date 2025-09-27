@@ -16,8 +16,9 @@ export default async function AdminPage({
   const supabase = createSupabaseServerClient();
 
   // Require auth
-  const { data: userRes } = await supabase.auth.getUser();
-  const user = userRes?.user;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
   // Require admin role
@@ -34,7 +35,7 @@ export default async function AdminPage({
   // Read query flags (Next 15 may pass a Promise)
   const sp = (await (searchParams as any)) ?? {};
 
-  // List users via service role
+  // List users via service role (server-side only)
   const admin = createSupabaseServiceClient();
   const { data: list, error } = await admin.auth.admin.listUsers({
     page: 1,
