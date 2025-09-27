@@ -1,14 +1,18 @@
-// src/app/(app)/admin/page.tsx
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
 import { createSupabaseServiceClient } from "@/lib/supabase/serviceClient";
 import { createUserAction, deleteUserAction } from "./actions";
 
-// Ensure Node.js (env vars available) and no caching
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
+type SearchParams = { created?: string; deleted?: string; error?: string };
+
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams?: Promise<SearchParams> | SearchParams;
+}) {
   const supabase = createSupabaseServerClient();
 
   // Require auth
@@ -16,16 +20,19 @@ export default async function AdminPage() {
   const user = userRes?.user;
   if (!user) redirect("/login");
 
-  // Require admin role from your profiles table
-  const { data: profile, error: profErr } = await supabase
+  // Require admin role
+  const { data: profile } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
 
-  if (profErr || !profile || profile.role !== "admin") {
-    redirect("/me"); // not allowed
+  if (!profile || profile.role !== "admin") {
+    redirect("/me");
   }
+
+  // Read query flags (Next 15 may pass a Promise)
+  const sp = (await (searchParams as any)) ?? {};
 
   // List users via service role
   const admin = createSupabaseServiceClient();
@@ -34,25 +41,30 @@ export default async function AdminPage() {
     perPage: 100,
   });
 
-  if (error) {
-    // Render a friendly error rather than crashing the page
-    return (
-      <main className="p-6">
-        <h1 className="text-2xl font-semibold">Admin</h1>
-        <p className="mt-4 text-red-600">Error loading users: {error.message}</p>
-        <p className="mt-2 text-sm text-gray-600">
-          Ensure SUPABASE_SERVICE_ROLE_KEY is set on Vercel and this page runs on Node.js runtime.
-        </p>
-      </main>
-    );
-  }
-
   const users = list?.users ?? [];
+  const loadError = error?.message || sp.error;
 
   return (
     <main className="max-w-3xl mx-auto p-6">
       <h1 className="text-2xl font-semibold">Admin</h1>
       <p className="text-gray-600 mt-1">Create and delete users.</p>
+
+      {/* Alerts */}
+      {sp.created && (
+        <div className="mt-4 rounded-md border border-green-200 bg-green-50 px-4 py-2 text-green-800">
+          User created successfully.
+        </div>
+      )}
+      {sp.deleted && (
+        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-amber-800">
+          User deleted.
+        </div>
+      )}
+      {loadError && (
+        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-red-800">
+          {loadError}
+        </div>
+      )}
 
       {/* Create user */}
       <section className="mt-6 rounded-xl border p-4">
