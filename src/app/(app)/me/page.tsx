@@ -23,7 +23,7 @@ export default async function MePage() {
   if (userErr) redirect("/login");
   if (!user) redirect("/login");
 
-  // Profile (null-safe; also read role so we can show Admin button)
+  // Profile (also read role so we can show Admin button)
   const { data: profile } = await supabase
     .from("profiles")
     .select("username, avatar_url, role")
@@ -85,14 +85,14 @@ export default async function MePage() {
   const canClaimDaily = !todayCheckin;
 
   // ---------- Server Action Wrappers (must return void) ----------
-  async function claimProfileCompleteAction() {
+  async function claimProfileCompleteAction(): Promise<void> {
     "use server";
     await awardPointsOnce("profile_complete", 100, {
       reason: "Completed profile (username + avatar)",
     });
   }
 
-  async function claimDailyAction() {
+  async function claimDailyAction(): Promise<void> {
     "use server";
     await awardPointsOncePerDay("daily_checkin", 500, { reason: "Daily check-in" });
   }
@@ -131,7 +131,7 @@ export default async function MePage() {
             <div className="mt-1 text-3xl font-semibold">{totalPoints.toLocaleString()}</div>
           </div>
 
-          <a href="/onboarding" className="rounded-lg border p-4 hover:bg-gray-50 transition">
+          <a href="/onboarding?edit=1" className="rounded-lg border p-4 hover:bg-gray-50 transition">
             <div className="text-sm text-gray-500">Profile</div>
             <div className="mt-1 font-medium">Edit profile</div>
           </a>
@@ -200,7 +200,7 @@ export default async function MePage() {
                 <button className="rounded-lg bg-black text-white px-4 py-2 font-medium">Claim +100</button>
               </form>
             ) : (
-              <a href="/onboarding" className="rounded-lg border px-4 py-2 font-medium text-center">
+              <a href="/onboarding?edit=1" className="rounded-lg border px-4 py-2 font-medium text-center">
                 {hasAvatar ? "Already claimed" : "Finish profile"}
               </a>
             )}

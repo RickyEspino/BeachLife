@@ -1,11 +1,18 @@
-// src/app/onboarding/page.tsx
+// src/app/(app)/onboarding/page.tsx
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
 import OnboardingForm from "@/components/OnboardingForm";
 
-export default async function OnboardingPage() {
-  const supabase = createSupabaseServerClient();
+type Props = { searchParams?: { [k: string]: string | string[] | undefined } };
 
+function strParam(v: string | string[] | undefined): string | undefined {
+  if (typeof v === "string") return v;
+  if (Array.isArray(v)) return v[0];
+  return undefined;
+}
+
+export default async function OnboardingPage({ searchParams }: Props) {
+  const supabase = createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -17,27 +24,28 @@ export default async function OnboardingPage() {
     .eq("id", user.id)
     .maybeSingle();
 
-  // Skip onboarding if already completed
-  if (profile?.username) redirect("/now");
+  const edit = strParam(searchParams?.edit) === "1";
 
-  const initialUsername = profile?.username ?? "";
-  const initialAvatarUrl = profile?.avatar_url ?? "";
+  // Skip onboarding for existing users unless explicitly editing
+  if (!edit && profile?.username) {
+    redirect("/now"); // or "/me" if you prefer
+  }
 
   return (
-    <main className="min-h-[100dvh] flex items-center justify-center p-6">
-      <div className="w-full max-w-xl rounded-2xl border p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold">Set up your profile</h1>
-        <p className="mt-2 text-gray-600">
-          Pick a username and upload an avatar. You can change these later.
-        </p>
-
-        <div className="mt-6">
-          <OnboardingForm
-            userId={user.id}
-            email={user.email ?? ""}
-            initialUsername={initialUsername}
-            initialAvatarUrl={initialAvatarUrl}
-          />
+    <main className="min-h-[100dvh] p-6">
+      <div className="mx-auto w-full max-w-xl rounded-2xl border p-6 shadow-sm">
+        <h1 className="text-2xl font-semibold mb-4">
+          {profile?.username ? "Edit profile" : "Let’s get you set up"}
+        </h1>
+        <OnboardingForm
+          initialProfile={profile ?? {}}
+          mode={profile?.username ? "edit" : "create"}
+        />
+        {/* Optional helper link back to dashboard */}
+        <div className="mt-4 text-sm">
+          <a href="/me" className="text-gray-700 underline hover:no-underline">
+            Back to dashboard
+          </a>
         </div>
       </div>
     </main>
