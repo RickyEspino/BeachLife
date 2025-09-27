@@ -63,12 +63,11 @@ export default async function MePage() {
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(25);
-
   const history = (historyRaw ?? []) as HistoryRow[];
 
   // --- Claimables ---
 
-  // One-time: Profile complete (+100)
+  // One-time: Profile complete (+100) if avatar exists and not yet claimed
   const hasAvatar = !!profile.avatar_url;
   const { data: profileCompleteEvent } = await supabase
     .from("point_events")
@@ -106,6 +105,38 @@ export default async function MePage() {
     "use server";
     await awardPointsOncePerDay("daily_checkin", 500, { reason: "Daily check-in" });
   }
+
+  // New: update avatar (upload to storage + save URL)
+  async function updateAvatarAction(formData: FormData) {
+    "use server";
+    const supabase = createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      redirect("/login");
+      return;
+    }
+
+    const file = formData.get("avatar") as File | null;
+    if (!file || file.size === 0) return;
+
+    const ext = file.name.split(".").pop() || "png";
+    const path = `avatars/${user.id}/${Date.now()}.${ext}`;
+
+    // Upload to storage (make sure you created a bucket named "avatars")
+    const { error: uploadErr } = await supabase.storage
+      .from("avatars")
+      .upload(path, file, { upsert: true, contentType: file.type || "image/png" });
+    if (uploadErr) return;
+
+    const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
+    const publicUrl = pub?.publicUrl;
+
+    if (publicUrl) {
+      await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", user.id);
+    }
+  }
   // -------------------------------------------------------
 
   // Level calc (every 1000 BP = new level)
@@ -139,6 +170,8 @@ export default async function MePage() {
           // Admin controls
           isAdmin={isAdmin}
           adminHref="/admin"
+          // New: inline avatar edit
+          updateAvatarAction={updateAvatarAction}
         />
       </div>
     </main>

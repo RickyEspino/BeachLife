@@ -34,6 +34,9 @@ export default function MeDashboard(props: {
   // Admin
   isAdmin?: boolean;
   adminHref?: string;
+
+  // New: avatar update action
+  updateAvatarAction: (formData: FormData) => void | Promise<void>;
 }) {
   const {
     userEmail,
@@ -52,6 +55,7 @@ export default function MeDashboard(props: {
     claimProfileCompleteAction,
     isAdmin = false,
     adminHref = "/admin",
+    updateAvatarAction,
   } = props;
 
   const [tab, setTab] = useState<"profile" | "wallet" | "activity">("wallet");
@@ -87,24 +91,7 @@ export default function MeDashboard(props: {
           <div className="flex-1">
             <p className="text-white/80 text-sm">Welcome back</p>
             <h3 className="text-xl font-semibold">{username}</h3>
-
-            {/* Level + clickable Admin badge */}
-            <div className="flex items-center gap-2">
-              <p className="text-white/90">Level {level}</p>
-              {isAdmin && (
-                <a
-                  href={adminHref}
-                  className="inline-flex items-center gap-1 rounded-md bg-black/35 px-2 py-0.5 text-[11px] font-semibold tracking-wide hover:bg-black/45 active:bg-black/55 transition focus:outline-none focus:ring-2 focus:ring-white/60"
-                  aria-label="Open Admin"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden>
-                    <path d="M12 3l7 4v5c0 4.418-2.686 8.418-7 10-4.314-1.582-7-5.582-7-10V7l7-4z" fill="currentColor" />
-                    <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  Admin
-                </a>
-              )}
-            </div>
+            <p className="text-white/90">Level {level}</p>
           </div>
 
           {/* Progress ring */}
@@ -161,6 +148,9 @@ export default function MeDashboard(props: {
               userEmail={userEmail}
               avatarUrl={avatarUrl}
               hasAvatar={hasAvatar}
+              isAdmin={isAdmin}
+              adminHref={adminHref}
+              updateAvatarAction={updateAvatarAction}
             />
           )}
 
@@ -209,34 +199,81 @@ function ProfilePanel({
   userEmail,
   avatarUrl,
   hasAvatar,
+  isAdmin,
+  adminHref,
+  updateAvatarAction,
 }: {
   username: string;
   userEmail: string;
   avatarUrl: string;
   hasAvatar: boolean;
+  isAdmin?: boolean;
+  adminHref?: string;
+  updateAvatarAction: (formData: FormData) => void | Promise<void>;
 }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-[auto,1fr] items-center">
-      {avatarUrl ? (
-        <img
-          src={avatarUrl}
-          alt={`${username} avatar`}
-          className="h-16 w-16 rounded-full object-cover border"
-        />
-      ) : (
-        <div className="h-16 w-16 rounded-full border bg-gradient-to-br from-gray-100 to-gray-200" />
-      )}
+    <div className="grid gap-4 sm:grid-cols-[auto,1fr] items-start">
+      {/* Avatar + Admin badge inline */}
+      <div className="flex items-center gap-2">
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt={`${username} avatar`}
+            className="h-16 w-16 rounded-full object-cover border"
+          />
+        ) : (
+          <div className="h-16 w-16 rounded-full border bg-gradient-to-br from-gray-100 to-gray-200" />
+        )}
+
+        {isAdmin && (
+          <a
+            href={adminHref ?? "/admin"}
+            className="inline-flex items-center gap-1 rounded-md bg-black/80 px-2 py-1 text-xs font-semibold text-white hover:bg-black transition focus:outline-none focus:ring-2 focus:ring-black/30"
+            aria-label="Open Admin"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden>
+              <path d="M12 3l7 4v5c0 4.418-2.686 8.418-7 10-4.314-1.582-7-5.582-7-10V7l7-4z" fill="currentColor" />
+              <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Admin
+          </a>
+        )}
+      </div>
+
+      {/* Profile fields + inline avatar upload */}
       <div>
         <div className="text-sm text-gray-500">Username</div>
         <div className="font-medium">{username}</div>
+
         <div className="mt-2 text-sm text-gray-500">Email</div>
         <div className="font-medium">{userEmail}</div>
-        <a
-          href="/onboarding"
-          className="mt-4 inline-flex rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+
+        {/* Inline avatar uploader (no redirect) */}
+        <form
+          action={updateAvatarAction}
+          className="mt-4 flex items-center gap-2"
+          encType="multipart/form-data"
         >
-          {hasAvatar ? "Edit profile" : "Finish profile"}
-        </a>
+          <input
+            type="file"
+            name="avatar"
+            accept="image/*"
+            className="block w-full text-sm file:mr-3 file:rounded-md file:border file:px-3 file:py-1.5 file:text-sm file:font-medium file:bg-gray-100 file:hover:bg-gray-200"
+          />
+          <button
+            type="submit"
+            className="rounded-lg bg-black text-white px-3 py-2 text-sm font-medium"
+          >
+            Update avatar
+          </button>
+        </form>
+
+        {/* Removed the link that previously routed to "now" */}
+        {!hasAvatar && (
+          <p className="mt-2 text-xs text-gray-500">
+            Tip: add an avatar to unlock the one-time profile bonus.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -310,12 +347,10 @@ function WalletPanel({
             </button>
           </form>
         ) : (
-          <a
-            href="/onboarding"
-            className="rounded-lg border px-4 py-2 font-medium text-center"
-          >
-            Finish profile
-          </a>
+          <div className="rounded-lg border px-4 py-2 font-medium text-center">
+            {/** No link; finish inside Profile tab now */}
+            Already claimed / edit in Profile tab
+          </div>
         )}
       </div>
     </div>
