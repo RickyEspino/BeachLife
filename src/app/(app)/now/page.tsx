@@ -112,7 +112,7 @@ export default async function NowPage() {
 
         {/* Other “Now” content can go here… */}
         <section className="rounded-xl border p-4">
-          <h2 className="font-semibold">Today’s beach highlights</h2>
+          <h2 className="font-semibold">Today’s beach highlights Loco!</h2>
           <p className="text-sm text-gray-600 mt-1">Surf, weather, events, and more — coming soon.</p>
         </section>
       </div>
