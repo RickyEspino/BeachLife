@@ -27,10 +27,5 @@ html, body { height: 100%; }
  Bottom nav aesthetics
 *********************/
 @layer components {
-  .bl-tab {
-    @apply flex items-center justify-center text-xs font-medium p-3 rounded-full transition;
-  }
-  .bl-tab--active {
-    @apply bg-gray-900 text-white;
-  }
+  /* Removed tab styling - using only icons now */
 }

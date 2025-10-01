@@ -33,7 +33,7 @@ export default function BottomTabs({ tabs = TABS, className = "" }: BottomTabsPr
 
   return (
     <nav
-      className={`fixed inset-x-0 bottom-0 z-40 border-t bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 ${className}`}
+      className={`fixed inset-x-0 bottom-0 z-40 ${className}`}
       role="navigation"
       aria-label="Primary"
     >
@@ -47,7 +47,7 @@ export default function BottomTabs({ tabs = TABS, className = "" }: BottomTabsPr
             <li key={tab.href}>
               <Link
                 href={tab.href}
-                className={`bl-tab ${isActive ? "bl-tab--active" : "text-gray-700 hover:bg-gray-100"}`}
+                className="p-2"
               >
                 <Icon icon={tab.icon} active={isActive} />
               </Link>
