@@ -16,7 +16,7 @@ import { EventsList } from "@/components/now/EventsList";
 import { getCurrentTidePhase, getTideAdvice } from "@/lib/tides";
 import { TidePanel } from "@/components/now/TidePanel";
 import { getActivitySuggestions } from "@/lib/now/activitySuggestions";
-import { ActivitySuggestions } from "@/components/now/ActivitySuggestions";
+import ActivitySlideshow from "@/components/now/ActivitySlideshow";
 import { calculateEnhancedStreak } from "@/lib/now/streak";
 import { StreakCard } from "@/components/now/StreakCard";
 import { awardPointsOnce, awardPointsOncePerDay } from "@/app/actions/points";
@@ -247,7 +247,7 @@ export default async function NowPage() {
 
         <StreakCard streak={streakData} />
 
-        <ActivitySuggestions suggestions={activitySuggestions} />
+        <ActivitySlideshow activities={activitySuggestions} />
 
         <EventsList events={todaysEvents} showUpcoming={true} />
 

@@ -123,6 +123,50 @@ const ACTIVITIES: ActivitySuggestion[] = [
     bestTime: 'evening',
     weatherRequirement: 'any',
   },
+  {
+    id: 'swimming',
+    title: 'Ocean Swimming',
+    description: 'Take a refreshing dip in the waves',
+    duration: '15-45 min',
+    category: 'active',
+    icon: '🏊‍♀️',
+    conditions: ['warm water', 'calm conditions'],
+    bestTime: 'midday',
+    weatherRequirement: 'sunny',
+  },
+  {
+    id: 'frisbee',
+    title: 'Beach Frisbee',
+    description: 'Play catch on the open sand',
+    duration: '30-60 min',
+    category: 'social',
+    icon: '🥏',
+    conditions: ['open space', 'light wind'],
+    bestTime: 'afternoon',
+    weatherRequirement: 'sunny',
+  },
+  {
+    id: 'sunset-walk',
+    title: 'Sunset Walk',
+    description: 'Peaceful evening stroll as day ends',
+    duration: '20-45 min',
+    category: 'relaxed',
+    icon: '🚶‍♂️',
+    conditions: ['golden hour', 'comfortable temp'],
+    bestTime: 'evening',
+    weatherRequirement: 'any',
+  },
+  {
+    id: 'meditation',
+    title: 'Beach Meditation',
+    description: 'Find inner peace with ocean sounds',
+    duration: '10-30 min',
+    category: 'solo',
+    icon: '🧘‍♀️',
+    conditions: ['quiet spot', 'calm atmosphere'],
+    bestTime: 'morning',
+    weatherRequirement: 'any',
+  },
 ];
 
 interface WeatherContext {
@@ -155,9 +199,26 @@ export function getActivitySuggestions(
   for (const activity of ACTIVITIES) {
     let score = 50; // Base score
 
-    // Time matching
-    if (activity.bestTime === timeOfDay || activity.bestTime === 'any') {
-      score += 20;
+    // Enhanced time-based scoring with stronger preference
+    if (activity.bestTime === timeOfDay) {
+      score += 30; // Strong preference for perfect time match
+    } else if (activity.bestTime === 'any') {
+      score += 15; // Moderate preference for flexible activities
+    } else {
+      score -= 10; // Penalty for wrong time activities
+    }
+
+    // Additional time-specific bonuses
+    if (timeOfDay === 'morning') {
+      if (activity.id === 'sunrise-yoga' || activity.id === 'beach-walk') score += 15;
+      if (activity.id === 'surfing') score += 10; // Best waves in morning
+    } else if (timeOfDay === 'midday') {
+      if (activity.id === 'swimming' || activity.id === 'beach-volleyball') score += 15;
+    } else if (timeOfDay === 'afternoon') {
+      if (activity.id === 'picnic' || activity.id === 'frisbee') score += 15;
+    } else if (timeOfDay === 'evening') {
+      if (activity.id === 'sunset-walk' || activity.id === 'beach-reading') score += 15;
+      if (activity.id === 'photography') score += 10; // Golden hour
     }
 
     // Weather matching
