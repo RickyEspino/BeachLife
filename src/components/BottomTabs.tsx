@@ -37,7 +37,7 @@ export default function BottomTabs({ tabs = TABS, className = "" }: BottomTabsPr
       role="navigation"
       aria-label="Primary"
     >
-      <ul className="mx-auto flex max-w-lg items-center justify-around gap-1 px-3 py-2">
+      <ul className="mx-auto flex max-w-lg items-center justify-around gap-2 px-4 py-3">
         {tabs.map((tab) => {
           const isActive =
             pathname === tab.href ||
@@ -50,7 +50,6 @@ export default function BottomTabs({ tabs = TABS, className = "" }: BottomTabsPr
                 className={`bl-tab ${isActive ? "bl-tab--active" : "text-gray-700 hover:bg-gray-100"}`}
               >
                 <Icon icon={tab.icon} active={isActive} />
-                <span className="leading-none">{tab.label}</span>
               </Link>
             </li>
           );
