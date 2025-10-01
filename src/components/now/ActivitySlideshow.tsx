@@ -44,10 +44,7 @@ export default function ActivitySlideshow({ activities }: ActivitySlideshowProps
     setIsAutoPlay(false);
   };
 
-  const goToSlide = (index: number) => {
-    setCurrentIndex(index);
-    setIsAutoPlay(false);
-  };
+
 
   const getCategoryColor = (category: string) => {
     switch (category) {
@@ -107,19 +104,8 @@ export default function ActivitySlideshow({ activities }: ActivitySlideshowProps
             <ChevronLeft size={18} />
           </button>
 
-          {/* Slide Indicators */}
-          <div className="flex gap-2">
-            {activities.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => goToSlide(index)}
-                className={`w-2 h-2 rounded-full transition-all ${
-                  index === currentIndex ? 'bg-white w-6' : 'bg-white/50'
-                }`}
-                aria-label={`Go to slide ${index + 1}`}
-              />
-            ))}
-          </div>
+          {/* Navigation spacer */}
+          <div className="flex-1" />
 
           <button
             onClick={goToNext}
