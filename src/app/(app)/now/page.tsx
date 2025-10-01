@@ -214,16 +214,10 @@ export default async function NowPage() {
         <RotatingBeachHeader />
 
         {/* Greeting line */}
-        <p className="text-gray-700 text-sm">
-          {greeting}{username ? "!" : "!"} {weather ? (
-            <>
-              {weather.tempC.toFixed(0)}°C, {weather.condition.toLowerCase()} · UV {weather.uv}
-              {advice.length > 0 && "+"}
-            </>
-          ) : (
-            <span className="text-gray-500">Loading conditions…</span>
-          )}
-        </p>
+        <div>
+          <p className="text-gray-800 text-base font-semibold">{greeting}{username ? "!" : "!"}</p>
+          <p className="text-gray-600 text-sm mt-1">Plan the perfect beach day, check the weather, track tides, get activities suggestions and orginize your crew with BeachLife.</p>
+        </div>
 
         {weather && beachScore && (
           <ConditionsBar
