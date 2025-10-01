@@ -6,7 +6,11 @@ import { computeBeachScore } from "@/lib/now/beachScore";
 import { buildWeatherAdvice } from "@/lib/now/weatherAdvice";
 import { ConditionsBar } from "@/components/now/ConditionsBar";
 import { AdviceChips } from "@/components/now/AdviceChips";
+import { SunsetPanel } from "@/components/now/SunsetPanel";
+import { BestWindow } from "@/components/now/BestWindow";
 import { buildGreeting } from "@/lib/now/greeting";
+import { estimateSunsetQuality, calculateSunset } from "@/lib/now/sunsetQuality";
+import { computeBestWindow } from "@/lib/now/bestWindow";
 import { awardPointsOnce, awardPointsOncePerDay } from "@/app/actions/points";
 import Link from "next/link";
 
@@ -92,15 +96,18 @@ export default async function NowPage() {
   const lat = 34.0195; // Santa Monica approx
   const lon = -118.4912;
   let weather: { tempC: number; uv: number; precipProb: number; windKph: number; cloudCover: number; condition: string } | null = null;
+  let hourlyData: Array<{ time: string; tempC: number; uv: number; precipProb: number; windKph: number; cloudCover: number }> = [];
+  
   try {
     const weatherRes = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,cloud_cover,precipitation,wind_speed_10m&hourly=uv_index,precipitation_probability&forecast_days=1`,
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,cloud_cover,precipitation,wind_speed_10m&hourly=temperature_2m,uv_index,precipitation_probability,wind_speed_10m,cloud_cover&forecast_days=1`,
       { next: { revalidate: 600 } }
     );
     if (weatherRes.ok) {
       const data = await weatherRes.json();
       const current = data.current;
       const hourly = data.hourly;
+      
       // Find current hour index for uv / precip prob
       let uv = 0;
       let precipProb = 0;
@@ -111,7 +118,18 @@ export default async function NowPage() {
           uv = Number(hourly.uv_index?.[idx] ?? 0);
           precipProb = Number(hourly.precipitation_probability?.[idx] ?? 0);
         }
+
+        // Build hourly data for best window calculation
+        hourlyData = hourly.time.map((time: string, i: number) => ({
+          time,
+          tempC: Number(hourly.temperature_2m?.[i] ?? 0),
+          uv: Number(hourly.uv_index?.[i] ?? 0),
+          precipProb: Number(hourly.precipitation_probability?.[i] ?? 0),
+          windKph: Number(hourly.wind_speed_10m?.[i] ?? 0),
+          cloudCover: Number(hourly.cloud_cover?.[i] ?? 0),
+        }));
       }
+      
       weather = {
         tempC: Number(current.temperature_2m),
         uv,
@@ -141,6 +159,13 @@ export default async function NowPage() {
   }) : [];
   const greeting = buildGreeting(username);
 
+  // Calculate sunset time and quality
+  const sunsetTime = calculateSunset(lat, lon);
+  const sunsetQuality = weather ? estimateSunsetQuality(weather.cloudCover, sunsetTime) : null;
+
+  // Find best window for activities
+  const bestWindow = hourlyData.length > 0 ? computeBestWindow(hourlyData) : null;
+
   return (
     <main className="p-6">
       <div className="mx-auto max-w-2xl space-y-5">
@@ -169,6 +194,12 @@ export default async function NowPage() {
         )}
 
         {advice.length > 0 && <AdviceChips advice={advice} />}
+
+        {bestWindow && <BestWindow window={bestWindow} />}
+
+        {sunsetQuality && (
+          <SunsetPanel sunsetTime={sunsetTime} quality={sunsetQuality} />
+        )}
 
         {/* Compact claimables: only render when there's an action to take */}
         <Claimables
