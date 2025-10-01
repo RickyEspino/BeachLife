@@ -1,6 +1,7 @@
 // src/app/(app)/now/page.tsx
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
 import { Claimables } from "@/components/Claimables";
+import { RotatingBeachHeader } from "@/components/RotatingBeachHeader";
 import { awardPointsOnce, awardPointsOncePerDay } from "@/app/actions/points";
 import Link from "next/link";
 
@@ -91,7 +92,9 @@ export default async function NowPage() {
           </Link>
         </header>
 
-        {/* Optional friendly greeting */}
+  <RotatingBeachHeader />
+
+  {/* Optional friendly greeting */}
         {username ? (
           <p className="text-gray-700">Hey {username}! Here’s what you can do right now:</p>
         ) : (
