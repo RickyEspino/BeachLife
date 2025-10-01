@@ -11,6 +11,14 @@ import { BestWindow } from "@/components/now/BestWindow";
 import { buildGreeting } from "@/lib/now/greeting";
 import { estimateSunsetQuality, calculateSunset } from "@/lib/now/sunsetQuality";
 import { computeBestWindow } from "@/lib/now/bestWindow";
+import { getTodaysEvents } from "@/lib/events";
+import { EventsList } from "@/components/now/EventsList";
+import { getCurrentTidePhase, getTideAdvice } from "@/lib/tides";
+import { TidePanel } from "@/components/now/TidePanel";
+import { getActivitySuggestions } from "@/lib/now/activitySuggestions";
+import { ActivitySuggestions } from "@/components/now/ActivitySuggestions";
+import { calculateEnhancedStreak } from "@/lib/now/streak";
+import { StreakCard } from "@/components/now/StreakCard";
 import { awardPointsOnce, awardPointsOncePerDay } from "@/app/actions/points";
 import Link from "next/link";
 
@@ -50,6 +58,16 @@ export default async function NowPage() {
 
   const username = profile?.username ?? "";
   const hasAvatar = !!profile?.avatar_url;
+
+  // Enhanced streak calculation
+  const { data: allPointEvents } = await supabase
+    .from("point_events")
+    .select("type, created_at, points")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  
+  const streakData = calculateEnhancedStreak(allPointEvents || []);
 
   // DAILY CLAIM CHECK (UTC)
   const now = new Date();
@@ -166,6 +184,30 @@ export default async function NowPage() {
   // Find best window for activities
   const bestWindow = hourlyData.length > 0 ? computeBestWindow(hourlyData) : null;
 
+  // Get today's events
+  const todaysEvents = getTodaysEvents();
+
+  // Get tide information
+  const tidePhase = getCurrentTidePhase();
+  const tideAdvice = getTideAdvice(tidePhase);
+
+  // Generate activity suggestions
+  const activitySuggestions = weather ? getActivitySuggestions(
+    {
+      tempC: weather.tempC,
+      uv: weather.uv,
+      precipProb: weather.precipProb,
+      windKph: weather.windKph,
+      cloudCover: weather.cloudCover,
+      condition: weather.condition,
+    },
+    {
+      hour: new Date().getHours(),
+      isWeekend: new Date().getDay() === 0 || new Date().getDay() === 6,
+    },
+    tidePhase
+  ) : [];
+
   return (
     <main className="p-6">
       <div className="mx-auto max-w-2xl space-y-5">
@@ -200,6 +242,14 @@ export default async function NowPage() {
         {sunsetQuality && (
           <SunsetPanel sunsetTime={sunsetTime} quality={sunsetQuality} />
         )}
+
+        <TidePanel phase={tidePhase} advice={tideAdvice} />
+
+        <StreakCard streak={streakData} />
+
+        <ActivitySuggestions suggestions={activitySuggestions} />
+
+        <EventsList events={todaysEvents} showUpcoming={true} />
 
         {/* Compact claimables: only render when there's an action to take */}
         <Claimables
