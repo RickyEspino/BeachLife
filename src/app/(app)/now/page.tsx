@@ -1,6 +1,8 @@
 // src/app/(app)/now/page.tsx
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
-import { Claimables } from "@/components/Claimables";
+import { Claimables } from "@/components/Claima        </header>
+
+        {/* Optional friendly greeting */};
 import { RotatingBeachHeader } from "@/components/RotatingBeachHeader";
 import { computeBeachScore } from "@/lib/now/beachScore";
 import { buildWeatherAdvice } from "@/lib/now/weatherAdvice";
@@ -144,14 +146,7 @@ export default async function NowPage() {
   return (
     <main className="p-6">
       <div className="mx-auto max-w-2xl space-y-5">
-        <header className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Now</h1>
-          <Link href="/me" className="text-sm font-medium underline underline-offset-4">
-            Go to Me
-          </Link>
-        </header>
-
-  <RotatingBeachHeader />
+        <RotatingBeachHeader />
 
         {/* Greeting line */}
         <p className="text-gray-700 text-sm">
