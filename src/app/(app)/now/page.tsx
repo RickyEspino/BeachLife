@@ -1,8 +1,6 @@
 // src/app/(app)/now/page.tsx
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
-import { Claimables } from "@/components/Claima        </header>
-
-        {/* Optional friendly greeting */};
+import { Claimables } from "@/components/Claimables";
 import { RotatingBeachHeader } from "@/components/RotatingBeachHeader";
 import { computeBeachScore } from "@/lib/now/beachScore";
 import { buildWeatherAdvice } from "@/lib/now/weatherAdvice";
@@ -123,7 +121,7 @@ export default async function NowPage() {
         condition: mapWeatherCode(current.weather_code),
       };
     }
-  } catch (e) {
+  } catch {
     // swallow network errors gracefully
   }
 
