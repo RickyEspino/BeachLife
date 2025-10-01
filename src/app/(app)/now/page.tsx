@@ -219,6 +219,12 @@ export default async function NowPage() {
           <p className="text-gray-600 text-sm mt-1">Plan the perfect beach day, check the weather, track tides, get activities suggestions and orginize your crew with BeachLife.</p>
         </div>
 
+                {/* Other “Now” content can go here… */}
+        <section className="rounded-xl border p-4 space-y-1">
+          <h2 className="font-semibold">Today’s beach highlights</h2>
+          <p className="text-sm text-gray-600">Events, surf, and extended forecast.</p>
+        </section>
+
         {weather && beachScore && (
           <ConditionsBar
             tempC={weather.tempC}
@@ -255,14 +261,7 @@ export default async function NowPage() {
           claimProfileCompleteAction={claimProfileCompleteAction}
         />
 
-        {/* Other “Now” content can go here… */}
-        <section className="rounded-xl border p-4 space-y-1">
-          <h2 className="font-semibold">Today’s beach highlights</h2>
-          <p className="text-sm text-gray-600">Events, surf, and extended forecast coming soon.</p>
-          {!weather && (
-            <p className="text-xs text-gray-500">Weather data unavailable right now.</p>
-          )}
-        </section>
+
       </div>
     </main>
   );
