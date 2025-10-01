@@ -4,7 +4,7 @@ export default function Home() {
     <main className="p-6">
       <h1 className="text-2xl font-semibold">BeachLife</h1>
       <p className="mt-2 text-gray-600">
-        Welcome! Sign in to access your account.
+        Welcome to the BeachLife! Sign in to access your account.
       </p>
 
       <div className="mt-6">
