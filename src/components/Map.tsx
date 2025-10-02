@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, { Marker, Popup, ViewState } from 'react-map-gl/mapbox';
 import Image from 'next/image';
@@ -34,38 +34,38 @@ type Props = {
 };
 
 export default function MapComponent({ merchants = [], loadError, initialView, focusId, showUserLocation = false, userAvatarUrl }: Props) {
+  // Myrtle Beach default center (approx)
   const [viewState, setViewState] = useState<Partial<ViewState>>(() => ({
-    longitude: initialView?.longitude ?? -122.4,
-    latitude: initialView?.latitude ?? 37.8,
-    zoom: initialView?.zoom ?? 10,
+    longitude: initialView?.longitude ?? -78.8803,
+    latitude: initialView?.latitude ?? 33.6954,
+    zoom: initialView?.zoom ?? 12,
   }));
 
   const [beaches] = useState<Beach[]>(FALLBACK_BEACHES); // retained for now
   const [selected, setSelected] = useState<BasePin | MerchantPin | null>(null);
   const [userPos, setUserPos] = useState<{ latitude: number; longitude: number; accuracy?: number } | null>(null);
+  const [locating, setLocating] = useState(false);
   const [geoDenied, setGeoDenied] = useState(false);
-  // When showUserLocation is true we watch geolocation and render a pulsing marker.
-  // Avatar image (if provided) is displayed inside the marker; otherwise a fallback circle with 'You'.
+  // Locator is now on-demand only; no persistent watch.
 
-  // Try to get the user's location and center the map only if no explicit initialView provided
-  useEffect(() => {
-    if (!showUserLocation) return;
+  function handleLocate() {
     if (!navigator.geolocation) return;
-    const watchId = navigator.geolocation.watchPosition(
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
-        setUserPos({ latitude, longitude, accuracy });
-        if (!initialView) {
-          setViewState((v) => ({ ...v, latitude, longitude }));
-        }
+        const newPos = { latitude, longitude, accuracy };
+        setUserPos(newPos);
+        setViewState((v) => ({ ...v, latitude, longitude }));
+        setLocating(false);
       },
       (err) => {
         if (err.code === err.PERMISSION_DENIED) setGeoDenied(true);
+        setLocating(false);
       },
-      { enableHighAccuracy: true, maximumAge: 1000 * 30, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     );
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, [showUserLocation, initialView]);
+  }
 
   // Auto focus a merchant if focusId provided
   useEffect(() => {
@@ -138,7 +138,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
               {/* Accuracy circle (hide if accuracy > 150m or missing) */}
               {typeof userPos.accuracy === 'number' && userPos.accuracy > 0 && userPos.accuracy <= 150 && (
                 <div
-                  className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-400/15 border border-blue-400/30"
+                  className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-400/15 border border-blue-400/30 transition-[width,height] duration-300 ease-out"
                   style={{
                     width: accuracyToPixels(userPos.accuracy, viewState.zoom ?? 10, userPos.latitude),
                     height: accuracyToPixels(userPos.accuracy, viewState.zoom ?? 10, userPos.latitude),
@@ -168,6 +168,17 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
           <div className="absolute left-2 top-10 rounded bg-yellow-500/90 px-3 py-1 text-[10px] font-medium text-white">
             Location blocked
           </div>
+        )}
+
+        {showUserLocation && (
+          <button
+            type="button"
+            onClick={handleLocate}
+            className="absolute right-3 top-3 z-50 rounded-full bg-white shadow border p-2 text-xs font-medium hover:bg-gray-50"
+            aria-label="Locate me"
+          >
+            {locating ? 'Locating…' : (userPos ? 'Recenter' : 'Locate Me')}
+          </button>
         )}
       </Map>
     </div>
