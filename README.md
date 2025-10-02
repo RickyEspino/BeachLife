@@ -47,6 +47,7 @@ Key application routes (non-exhaustive):
 - `/merchant` – Merchant owner dashboard (requires auth & ownership)
 - `/merchant/onboarding` – Create merchant profile
 - `/merchants` – Public list of participating merchants
+	- `/merchants/[id]` – Public merchant detail page
 
 ---
 # BeachLife

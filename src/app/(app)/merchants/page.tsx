@@ -34,19 +34,31 @@ export default async function MerchantsListPage() {
         <ul className="mt-6 divide-y rounded-lg border bg-white">
           {merchants?.map((m) => {
             const hasLocation = m.latitude && m.longitude;
+            const created = m.created_at ? new Date(m.created_at) : null;
             return (
-              <li key={m.id} className="p-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="font-medium">{m.business_name}</div>
-                  <div className="text-xs text-gray-500">
-                    {m.category || "—"}
-                    {m.business_address ? ` • ${m.business_address}` : ""}
-                    {hasLocation ? ` • (${m.latitude}, ${m.longitude})` : ""}
+              <li key={m.id} className="p-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-1">
+                  <Link href={`/merchants/${m.id}`} className="font-medium hover:underline">
+                    {m.business_name || 'Unnamed'}
+                  </Link>
+                  <div className="flex flex-wrap items-center gap-1 text-xs text-gray-600">
+                    {m.category && (
+                      <span className="rounded bg-gray-100 px-2 py-0.5 font-medium text-gray-700">
+                        {m.category}
+                      </span>
+                    )}
+                    {m.business_address && <span>{m.business_address}</span>}
+                    {hasLocation && (
+                      <span className="text-gray-400">({m.latitude}, {m.longitude})</span>
+                    )}
+                    {created && (
+                      <span className="text-gray-400">• Joined {created.toLocaleDateString()}</span>
+                    )}
                   </div>
                 </div>
-                <div className="flex gap-2 text-xs mt-2 sm:mt-0">
-                  <Link href={`/merchant/claim/${m.id}`} className="rounded border px-2 py-1 hover:bg-gray-50">
-                    View
+                <div className="flex gap-2 text-xs">
+                  <Link href={`/merchants/${m.id}`} className="rounded border px-2 py-1 hover:bg-gray-50">
+                    Details
                   </Link>
                 </div>
               </li>
