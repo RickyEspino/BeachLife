@@ -112,54 +112,6 @@ export default async function MePage() {
   }
 
   // Avatar actions
-  async function updateAvatarAction(formData: FormData) {
-    "use server";
-    try {
-      const supa = createSupabaseServerClient();
-      const {
-        data: { user },
-      } = await supa.auth.getUser();
-      if (!user) return;
-
-      const file = formData.get("avatar") as File | null;
-      if (!file || file.size === 0) return;
-
-      // Basic size/type guard
-      if (file.size > 5 * 1024 * 1024) {
-        // Optional: log / show toast via client state; we simply bail here
-        return;
-      }
-
-      const ext = (file.name.split(".").pop() || "png").toLowerCase();
-      const path = `avatars/${user.id}/avatar-${Date.now()}.${ext}`;
-
-      const { error: upErr } = await supa
-        .storage
-        .from("avatars") // <-- ensure this bucket exists
-        .upload(path, file, {
-          upsert: true,
-          contentType: file.type || "image/png",
-        });
-
-      if (upErr) {
-        // Optional: console.error(upErr);
-        return;
-      }
-
-      const { data: urlData } = supa.storage.from("avatars").getPublicUrl(path);
-      const publicUrl = urlData?.publicUrl;
-      if (!publicUrl) return;
-
-      await supa
-        .from("profiles")
-        .upsert({ id: user.id, avatar_url: publicUrl, updated_at: new Date().toISOString() });
-
-      revalidatePath("/me");
-    } catch {
-      // swallow to avoid client crash; you can log server-side if desired
-    }
-  }
-
   async function removeAvatarAction() {
     "use server";
     try {
@@ -213,7 +165,6 @@ export default async function MePage() {
           isAdmin={isAdmin}
           adminHref="/admin"
           // Avatar actions
-          updateAvatarAction={updateAvatarAction}
           removeAvatarAction={removeAvatarAction}
         />
       </div>
