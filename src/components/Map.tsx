@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, { Marker, Popup, ViewState } from 'react-map-gl/mapbox';
 import Image from 'next/image';
@@ -42,7 +42,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
 
   const [beaches] = useState<Beach[]>(FALLBACK_BEACHES); // retained for now
   const [selected, setSelected] = useState<BasePin | MerchantPin | null>(null);
-  const [userPos, setUserPos] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [userPos, setUserPos] = useState<{ latitude: number; longitude: number; accuracy?: number } | null>(null);
   const [geoDenied, setGeoDenied] = useState(false);
   // When showUserLocation is true we watch geolocation and render a pulsing marker.
   // Avatar image (if provided) is displayed inside the marker; otherwise a fallback circle with 'You'.
@@ -53,8 +53,8 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
     if (!navigator.geolocation) return;
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setUserPos({ latitude, longitude });
+        const { latitude, longitude, accuracy } = pos.coords;
+        setUserPos({ latitude, longitude, accuracy });
         if (!initialView) {
           setViewState((v) => ({ ...v, latitude, longitude }));
         }
@@ -135,6 +135,16 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
         {showUserLocation && userPos && (
           <Marker longitude={userPos.longitude} latitude={userPos.latitude} anchor="center">
             <div className="relative">
+              {/* Accuracy circle (hide if accuracy > 150m or missing) */}
+              {typeof userPos.accuracy === 'number' && userPos.accuracy > 0 && userPos.accuracy <= 150 && (
+                <div
+                  className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-400/15 border border-blue-400/30"
+                  style={{
+                    width: accuracyToPixels(userPos.accuracy, viewState.zoom ?? 10, userPos.latitude),
+                    height: accuracyToPixels(userPos.accuracy, viewState.zoom ?? 10, userPos.latitude),
+                  }}
+                />
+              )}
               <div className="absolute inset-0 animate-ping rounded-full bg-blue-400/40" />
               {userAvatarUrl ? (
                 <Image
@@ -166,4 +176,14 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
 
 function isMerchantPin(p: BasePin | MerchantPin): p is MerchantPin {
   return (p as MerchantPin).category !== undefined;
+}
+
+// Approximate meters to pixels at current latitude & zoom.
+// Formula: metersPerPixel = 156543.03392 * cos(lat * PI/180) / 2^zoom
+function accuracyToPixels(meters: number, zoom: number, latitude: number): string {
+  const metersPerPixel = 156543.03392 * Math.cos(latitude * Math.PI / 180) / Math.pow(2, zoom);
+  if (metersPerPixel <= 0 || !isFinite(metersPerPixel)) return '0px';
+  const diameterPx = (meters / metersPerPixel) * 2; // full diameter
+  const clamped = Math.min(Math.max(diameterPx, 8), 300); // clamp between 8px and 300px
+  return `${clamped.toFixed(1)}px`;
 }
