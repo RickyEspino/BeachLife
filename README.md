@@ -41,6 +41,7 @@ Key application routes (non-exhaustive):
 - `/now` – Current beach conditions dashboard
 - `/map` – Interactive beach / merchant map
 	- Merchant locations with latitude/longitude are rendered as pins (🏪) refreshed every 2 minutes.
+		- Supports focusing via query params: `/map?lat=..&lng=..&z=15&focus=<merchantId>` to center and open popup.
 - `/community` – Community feed (placeholder)
 - `/reels` – Short-form content (placeholder)
 - `/me` – User dashboard
@@ -48,6 +49,7 @@ Key application routes (non-exhaustive):
 - `/merchant/onboarding` – Create merchant profile
 - `/merchants` – Public list of participating merchants
 	- `/merchants/[id]` – Public merchant detail page
+		- Shows basic info and last 5 reward issuances (masked codes, points, status) plus a View on Map CTA when coordinates exist.
 
 ---
 # BeachLife

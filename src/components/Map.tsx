@@ -26,20 +26,23 @@ const FALLBACK_BEACHES: Beach[] = [
 type Props = {
   merchants?: MerchantPin[];
   loadError?: string;
+  initialView?: { latitude: number; longitude: number; zoom?: number };
+  focusId?: string;
 };
 
-export default function MapComponent({ merchants = [], loadError }: Props) {
-  const [viewState, setViewState] = useState<Partial<ViewState>>({
-    longitude: -122.4,
-    latitude: 37.8,
-    zoom: 10,
-  });
+export default function MapComponent({ merchants = [], loadError, initialView, focusId }: Props) {
+  const [viewState, setViewState] = useState<Partial<ViewState>>(() => ({
+    longitude: initialView?.longitude ?? -122.4,
+    latitude: initialView?.latitude ?? 37.8,
+    zoom: initialView?.zoom ?? 10,
+  }));
 
   const [beaches] = useState<Beach[]>(FALLBACK_BEACHES); // retained for now
   const [selected, setSelected] = useState<BasePin | MerchantPin | null>(null);
 
-  // Try to get the user's location and center the map
+  // Try to get the user's location and center the map only if no explicit initialView provided
   useEffect(() => {
+    if (initialView) return; // user specified
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -47,12 +50,21 @@ export default function MapComponent({ merchants = [], loadError }: Props) {
         setViewState((v) => ({ ...v, latitude, longitude, zoom: 12 }));
       },
       (err) => {
-        // ignore; we already have a fallback view
         console.debug('Geolocation error', err.message);
       },
       { enableHighAccuracy: true, maximumAge: 1000 * 60 * 5 }
     );
-  }, []);
+  }, [initialView]);
+
+  // Auto focus a merchant if focusId provided
+  useEffect(() => {
+    if (!focusId) return;
+    const target = merchants.find(m => m.id === focusId);
+    if (target) {
+      setSelected(target);
+      setViewState(v => ({ ...v, latitude: target.latitude, longitude: target.longitude }));
+    }
+  }, [focusId, merchants]);
 
   return (
     <div className="fixed inset-0">{/* fill viewport */}

@@ -3,7 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/serverClient';
 
 export const revalidate = 120; // refresh merchant pins every 2 minutes
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase
     .from('merchants')
@@ -23,9 +23,20 @@ export default async function Page() {
       category: m.category || undefined,
     }));
 
+  const lat = parseFloat(String(searchParams?.lat ?? ''));
+  const lng = parseFloat(String(searchParams?.lng ?? ''));
+  const z = parseFloat(String(searchParams?.z ?? ''));
+  const focus = typeof searchParams?.focus === 'string' ? searchParams?.focus : undefined;
+
+  const initialView = Number.isFinite(lat) && Number.isFinite(lng) ? {
+    latitude: lat,
+    longitude: lng,
+    zoom: Number.isFinite(z) ? z : 14
+  } : undefined;
+
   return (
     <section className="h-full">
-      <MapComponent merchants={merchants} loadError={error?.message} />
+      <MapComponent merchants={merchants} loadError={error?.message} initialView={initialView} focusId={focus} />
     </section>
   );
 }
