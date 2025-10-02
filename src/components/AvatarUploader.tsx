@@ -45,16 +45,15 @@ export default function AvatarUploader({ initialUrl, onUploaded, className = '' 
       await ensureProfile(user.id);
 
       const ext = (file.name.split('.').pop() || 'png').toLowerCase();
-      const folder = `avatars/${user.id}`; // we keep a per-user folder
+      const folder = `${user.id}`; // first path segment is user id for RLS
       const filename = `avatar-${Date.now()}.${ext}`;
       const path = `${folder}/${filename}`;
 
       // Optional: clean older files to avoid accumulation (best effort)
       try {
-        const { data: listData } = await supabase.storage.from('avatars').list(folder.replace(/^avatars\//, ''), { limit: 20 });
+        const { data: listData } = await supabase.storage.from('avatars').list(folder, { limit: 20 });
         if (listData && listData.length > 5) {
-          // delete all older files except newest preview (not critical if fails)
-          const toRemove = listData.map(f => `${folder.replace(/^avatars\//,'')}/${f.name}`);
+          const toRemove = listData.map(f => `${folder}/${f.name}`);
           await supabase.storage.from('avatars').remove(toRemove);
         }
       } catch (cleanupErr) {
