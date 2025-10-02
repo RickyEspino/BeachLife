@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import Map, { Marker, Popup, ViewState } from 'react-map-gl/mapbox';
-import Image from 'next/image';
+import Map, { Marker, Popup, ViewState, GeolocateControl } from 'react-map-gl/mapbox';
+// removed avatar Image for user marker; using GeolocateControl's built-in indicator
 
 export type BasePin = {
   id: string;
@@ -30,10 +30,9 @@ type Props = {
   initialView?: { latitude: number; longitude: number; zoom?: number };
   focusId?: string;
   showUserLocation?: boolean;
-  userAvatarUrl?: string;
 };
 
-export default function MapComponent({ merchants = [], loadError, initialView, focusId, showUserLocation = false, userAvatarUrl }: Props) {
+export default function MapComponent({ merchants = [], loadError, initialView, focusId, showUserLocation = false }: Props) {
   // Myrtle Beach default center (approx)
   const [viewState, setViewState] = useState<Partial<ViewState>>(() => ({
     longitude: initialView?.longitude ?? -78.8803,
@@ -44,6 +43,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
   const [beaches] = useState<Beach[]>(FALLBACK_BEACHES); // retained for now
   const [selected, setSelected] = useState<BasePin | MerchantPin | null>(null);
   const [userPos, setUserPos] = useState<{ latitude: number; longitude: number; accuracy?: number } | null>(null);
+  // internal flag not exposed; we removed manual button so locating UI not needed
   const [locating, setLocating] = useState(false);
   const [geoDenied, setGeoDenied] = useState(false);
   // Locator is now on-demand only; no persistent watch.
@@ -51,7 +51,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
   // Auto attempt a single locate on mount (or when showUserLocation toggles on)
   useEffect(() => {
     if (!showUserLocation) return;
-    if (userPos || locating) return; // already have or in progress
+  if (userPos || locating) return; // already have or currently fetching
     // If Permissions API available, only auto-run if granted or prompt (avoid denied spam)
     let cancelled = false;
     (async () => {
@@ -150,37 +150,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
           </div>
         )}
 
-        {showUserLocation && userPos && (
-          <Marker longitude={userPos.longitude} latitude={userPos.latitude} anchor="center">
-            <div className="relative">
-              {/* Accuracy circle (hide if accuracy > 150m or missing) */}
-              {typeof userPos.accuracy === 'number' && userPos.accuracy > 0 && userPos.accuracy <= 150 && (
-                <div
-                  className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-400/15 border border-blue-400/30 transition-[width,height] duration-300 ease-out"
-                  style={{
-                    width: accuracyToPixels(userPos.accuracy, viewState.zoom ?? 10, userPos.latitude),
-                    height: accuracyToPixels(userPos.accuracy, viewState.zoom ?? 10, userPos.latitude),
-                  }}
-                />
-              )}
-              <div className="absolute inset-0 animate-ping rounded-full bg-blue-400/40" />
-              {userAvatarUrl ? (
-                <Image
-                  src={userAvatarUrl}
-                  alt="You"
-                  width={32}
-                  height={32}
-                  className="rounded-full border-2 border-white shadow-md object-cover"
-                  priority
-                />
-              ) : (
-                <div className="h-8 w-8 rounded-full border-2 border-white bg-blue-500 text-white flex items-center justify-center text-xs font-semibold shadow-md">
-                  You
-                </div>
-              )}
-            </div>
-          </Marker>
-        )}
+        {/* Using GeolocateControl's built-in indicator + accuracy circle; custom marker removed */}
 
         {showUserLocation && geoDenied && !userPos && (
           <div className="absolute left-2 top-10 rounded bg-yellow-500/90 px-3 py-1 text-[10px] font-medium text-white">
@@ -189,24 +159,22 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
         )}
 
         {showUserLocation && (
-          <button
-            type="button"
-            onClick={handleLocate}
-            className={`absolute right-3 top-3 z-50 h-10 w-10 flex items-center justify-center rounded-xl bg-white shadow-md border border-gray-200 transition-colors active:scale-[0.97] ${locating ? 'opacity-70' : 'hover:bg-gray-50'} ${userPos ? 'text-blue-600' : 'text-gray-700'}`}
-            aria-label={userPos ? 'Recenter on my location' : 'Locate me'}
-          >
-            {/* Target / crosshair icon (pure CSS) */}
-            <span className="relative block h-5 w-5">
-              <span className="absolute inset-0 rounded-full border-2 border-current" />
-              <span className="absolute left-1/2 top-0 h-1 w-0.5 -translate-x-1/2 bg-current" />
-              <span className="absolute left-1/2 bottom-0 h-1 w-0.5 -translate-x-1/2 bg-current" />
-              <span className="absolute top-1/2 left-0 w-1 h-0.5 -translate-y-1/2 bg-current" />
-              <span className="absolute top-1/2 right-0 w-1 h-0.5 -translate-y-1/2 bg-current" />
-              <span className={`absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ${locating ? 'bg-current animate-pulse' : 'bg-current/90'}`} />
-            </span>
-            <span className="sr-only">{locating ? 'Locating' : (userPos ? 'Recenter' : 'Locate')}</span>
-          </button>
+          <div className="pointer-events-auto absolute right-3" style={{ bottom: 'calc(72px + var(--safe-bottom))' }}>
+            <div className="rounded-xl bg-white shadow-md border border-gray-200 p-1">
+              <GeolocateControl
+                trackUserLocation={false}
+                showUserHeading={false}
+                showAccuracyCircle={true}
+                onGeolocate={(e) => {
+                  const { latitude, longitude, accuracy } = e.coords;
+                  setUserPos({ latitude, longitude, accuracy });
+                  setViewState((v) => ({ ...v, latitude, longitude }));
+                }}
+              />
+            </div>
+          </div>
         )}
+
       </Map>
     </div>
   );
@@ -218,10 +186,4 @@ function isMerchantPin(p: BasePin | MerchantPin): p is MerchantPin {
 
 // Approximate meters to pixels at current latitude & zoom.
 // Formula: metersPerPixel = 156543.03392 * cos(lat * PI/180) / 2^zoom
-function accuracyToPixels(meters: number, zoom: number, latitude: number): string {
-  const metersPerPixel = 156543.03392 * Math.cos(latitude * Math.PI / 180) / Math.pow(2, zoom);
-  if (metersPerPixel <= 0 || !isFinite(metersPerPixel)) return '0px';
-  const diameterPx = (meters / metersPerPixel) * 2; // full diameter
-  const clamped = Math.min(Math.max(diameterPx, 8), 300); // clamp between 8px and 300px
-  return `${clamped.toFixed(1)}px`;
-}
+// removed custom accuracyToPixels as we rely on GeolocateControl's accuracy circle
