@@ -174,10 +174,19 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
           <button
             type="button"
             onClick={handleLocate}
-            className="absolute right-3 top-3 z-50 rounded-full bg-white shadow border p-2 text-xs font-medium hover:bg-gray-50"
-            aria-label="Locate me"
+            className={`absolute right-3 top-3 z-50 h-10 w-10 flex items-center justify-center rounded-xl bg-white shadow-md border border-gray-200 transition-colors active:scale-[0.97] ${locating ? 'opacity-70' : 'hover:bg-gray-50'} ${userPos ? 'text-blue-600' : 'text-gray-700'}`}
+            aria-label={userPos ? 'Recenter on my location' : 'Locate me'}
           >
-            {locating ? 'Locating…' : (userPos ? 'Recenter' : 'Locate Me')}
+            {/* Target / crosshair icon (pure CSS) */}
+            <span className="relative block h-5 w-5">
+              <span className="absolute inset-0 rounded-full border-2 border-current" />
+              <span className="absolute left-1/2 top-0 h-1 w-0.5 -translate-x-1/2 bg-current" />
+              <span className="absolute left-1/2 bottom-0 h-1 w-0.5 -translate-x-1/2 bg-current" />
+              <span className="absolute top-1/2 left-0 w-1 h-0.5 -translate-y-1/2 bg-current" />
+              <span className="absolute top-1/2 right-0 w-1 h-0.5 -translate-y-1/2 bg-current" />
+              <span className={`absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ${locating ? 'bg-current animate-pulse' : 'bg-current/90'}`} />
+            </span>
+            <span className="sr-only">{locating ? 'Locating' : (userPos ? 'Recenter' : 'Locate')}</span>
           </button>
         )}
       </Map>
