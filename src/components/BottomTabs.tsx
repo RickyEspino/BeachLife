@@ -33,29 +33,35 @@ export default function BottomTabs({ tabs = TABS, className = "" }: BottomTabsPr
 
   return (
     <nav
-      className={`fixed inset-x-0 bottom-0 z-40 ${className}`}
+      className={`pointer-events-none fixed inset-x-0 bottom-3 z-40 flex justify-center ${className}`}
       role="navigation"
       aria-label="Primary"
     >
-      <ul className="mx-auto flex max-w-lg items-center justify-around gap-2 px-4 py-3">
-        {tabs.map((tab) => {
-          const isActive =
-            pathname === tab.href ||
-            (Boolean(tab.matchPrefix) && Boolean(pathname?.startsWith(tab.matchPrefix!)));
+      <div className="pointer-events-auto">
+        <ul className="flex items-center gap-1 rounded-full bg-white/80 backdrop-blur-md shadow-lg border border-white/60 px-3 py-2 supports-[backdrop-filter]:bg-white/60">
+          {tabs.map((tab) => {
+            const isActive =
+              pathname === tab.href ||
+              (Boolean(tab.matchPrefix) && Boolean(pathname?.startsWith(tab.matchPrefix!)));
 
-          return (
-            <li key={tab.href}>
-              <Link
-                href={tab.href}
-                className="p-2"
-              >
-                <Icon icon={tab.icon} active={isActive} />
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-      <div style={{ height: "var(--safe-bottom)" }} />
+            return (
+              <li key={tab.href}>
+                <Link
+                  href={tab.href}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`group relative flex h-11 w-11 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 ${isActive ? 'text-blue-600' : 'text-gray-700 hover:text-gray-900'}`}
+                >
+                  {isActive && (
+                    <span className="absolute inset-0 rounded-full bg-blue-600/10 ring-1 ring-inset ring-blue-500/30" aria-hidden="true" />
+                  )}
+                  <Icon icon={tab.icon} active={isActive} />
+                  <span className="sr-only">{tab.label}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </nav>
   );
 }
