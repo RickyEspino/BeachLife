@@ -2,6 +2,8 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useMemo, useState } from "react";
+import dynamic from 'next/dynamic';
+const AvatarUploader = dynamic(() => import('@/components/AvatarUploader'), { ssr: false });
 import Link from "next/link";
 
 type HistoryRow = {
@@ -178,7 +180,6 @@ export default function MeDashboard(props: {
               hasAvatar={hasAvatar}
               isAdmin={isAdmin}
               adminHref={adminHref}
-              updateAvatarAction={updateAvatarAction}
               removeAvatarAction={removeAvatarAction}
             />
           )}
@@ -230,7 +231,6 @@ function ProfilePanel({
   hasAvatar,
   isAdmin,
   adminHref,
-  updateAvatarAction,
   removeAvatarAction,
 }: {
   username: string;
@@ -239,7 +239,6 @@ function ProfilePanel({
   hasAvatar: boolean;
   isAdmin: boolean;
   adminHref: string;
-  updateAvatarAction: (formData: FormData) => void | Promise<void>;
   removeAvatarAction: (formData?: FormData) => void | Promise<void>;
 }) {
   return (
@@ -275,35 +274,11 @@ function ProfilePanel({
         <div className="font-medium">{userEmail}</div>
       </div>
 
-      {/* Inline avatar uploader */}
-      <div className="rounded-xl border p-4">
-        <div className="font-medium">Change avatar</div>
-        <p className="text-sm text-gray-600 mt-1">
-          Upload a square image (PNG or JPG) for best results.
-        </p>
-        <form
-          action={updateAvatarAction}
-          method="post"
-          encType="multipart/form-data"
-          className="mt-3 flex items-center gap-2"
-        >
-          <input
-            type="file"
-            name="avatar"
-            accept="image/*"
-            className="block w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded-md file:border file:border-gray-200 file:bg-white file:text-sm file:font-medium hover:file:bg-gray-50"
-            required
-          />
-          <button
-            type="submit"
-            className="rounded-lg bg-black text-white px-4 py-2 text-sm font-medium"
-          >
-            Upload
-          </button>
-        </form>
-
+      <div className="rounded-xl border p-4 space-y-3">
+        <div className="font-medium">Avatar</div>
+        <AvatarUploader initialUrl={avatarUrl || undefined} onUploaded={() => { /* could trigger client refresh */ }} />
         {hasAvatar && (
-          <form action={removeAvatarAction} method="post" className="mt-2">
+          <form action={removeAvatarAction} method="post" className="pt-1">
             <button
               type="submit"
               className="text-sm text-red-600 hover:text-red-700 underline underline-offset-4"
@@ -312,6 +287,7 @@ function ProfilePanel({
             </button>
           </form>
         )}
+        <p className="text-xs text-gray-500">Max 5MB. Square images look best.</p>
       </div>
     </div>
   );

@@ -38,7 +38,7 @@ export default function BottomTabs({ tabs = TABS, className = "" }: BottomTabsPr
       aria-label="Primary"
     >
       <div className="pointer-events-auto">
-        <ul className="flex items-center gap-1 rounded-full bg-white/80 backdrop-blur-md shadow-lg border border-white/60 px-3 py-2 supports-[backdrop-filter]:bg-white/60">
+        <ul className="list-none flex items-center gap-1 rounded-full bg-white/80 backdrop-blur-md shadow-lg border border-white/60 px-3 py-2 supports-[backdrop-filter]:bg-white/60">
           {tabs.map((tab) => {
             const isActive =
               pathname === tab.href ||

@@ -1,6 +1,6 @@
 // src/lib/nav.ts
 import type { ComponentType, SVGProps } from "react";
-import { Waves, MapPinned, PlaySquare, MessageCircle, UserRound, Store } from "lucide-react";
+import { Sun, Map, Film, Users, User, Store } from "lucide-react";
 
 export type Tab = {
   href: string;
@@ -10,10 +10,10 @@ export type Tab = {
 };
 
 export const TABS: Tab[] = [
-  { href: "/now",       label: "Now",       icon: Waves,        matchPrefix: "/now" },      // live beach conditions
-  { href: "/map",       label: "Map",       icon: MapPinned,    matchPrefix: "/map" },      // map & merchants
-  { href: "/reels",     label: "Reels",     icon: PlaySquare,   matchPrefix: "/reels" },    // short videos
-  { href: "/community", label: "Chat",      icon: MessageCircle,matchPrefix: "/community" },// rename for concise feel
-  { href: "/merchants", label: "Shops",     icon: Store,        matchPrefix: "/merchants" },// more user-friendly wording
-  { href: "/me",        label: "Profile",   icon: UserRound,    matchPrefix: "/me" },       // clearer than 'Me'
+  { href: "/now",       label: "Now",       icon: Sun,   matchPrefix: "/now" },
+  { href: "/map",       label: "Map",       icon: Map,   matchPrefix: "/map" },
+  { href: "/reels",     label: "Reels",     icon: Film,  matchPrefix: "/reels" },
+  { href: "/community", label: "Community", icon: Users, matchPrefix: "/community" },
+  { href: "/merchants", label: "Merchants", icon: Store, matchPrefix: "/merchants" },
+  { href: "/me",        label: "Me",        icon: User,  matchPrefix: "/me" },
 ];
