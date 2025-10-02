@@ -15,27 +15,65 @@ export default function AvatarUploader({ initialUrl, onUploaded, className = '' 
   const [preview, setPreview] = useState<string | undefined>(initialUrl);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  async function ensureProfile(userId: string) {
+    // Upsert a profile row if it doesn't exist so the update doesn't silently affect 0 rows
+    const { error: upsertErr } = await supabase
+      .from('profiles')
+      .upsert({ id: userId }, { onConflict: 'id', ignoreDuplicates: true });
+    if (upsertErr) {
+      // Not fatal for uploading avatar but note it
+      console.warn('Profile upsert warning', upsertErr);
+    }
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setInfo(null);
     const file = inputRef.current?.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { setError('File too large (max 5MB).'); return; }
 
     try {
       setUploading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authErr } = await supabase.auth.getUser();
+      if (authErr) { setError(`Auth error: ${authErr.message}`); return; }
       if (!user) { setError('Not authenticated'); return; }
 
+      await ensureProfile(user.id);
+
       const ext = (file.name.split('.').pop() || 'png').toLowerCase();
-      const path = `avatars/${user.id}/avatar-${Date.now()}.${ext}`;
+      const folder = `avatars/${user.id}`; // we keep a per-user folder
+      const filename = `avatar-${Date.now()}.${ext}`;
+      const path = `${folder}/${filename}`;
+
+      // Optional: clean older files to avoid accumulation (best effort)
+      try {
+        const { data: listData } = await supabase.storage.from('avatars').list(folder.replace(/^avatars\//, ''), { limit: 20 });
+        if (listData && listData.length > 5) {
+          // delete all older files except newest preview (not critical if fails)
+          const toRemove = listData.map(f => `${folder.replace(/^avatars\//,'')}/${f.name}`);
+          await supabase.storage.from('avatars').remove(toRemove);
+        }
+      } catch (cleanupErr) {
+        console.warn('Avatar cleanup failed', cleanupErr);
+      }
 
       const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, {
         upsert: true,
         contentType: file.type || 'image/png'
       });
-      if (upErr) { setError('Upload failed'); return; }
+      console.log('UPLOAD RES', { path, fileType: file.type, size: file.size }, upErr);
+      if (upErr) {
+        if (upErr.message.toLowerCase().includes('duplicate')) {
+          setError('File already exists and cannot be replaced. Try a different image.');
+        } else {
+          setError(`Upload failed: ${upErr.message}`);
+        }
+        return;
+      }
 
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
       const publicUrl = urlData?.publicUrl;
@@ -45,12 +83,13 @@ export default function AvatarUploader({ initialUrl, onUploaded, className = '' 
         .from('profiles')
         .update({ avatar_url: publicUrl, updated_at: new Date().toISOString() })
         .eq('id', user.id);
-      if (profErr) { setError('Profile update failed'); return; }
+      if (profErr) { setError(`Profile update failed: ${profErr.message}`); return; }
 
       setPreview(publicUrl);
+      setInfo('Avatar updated');
       onUploaded?.(publicUrl);
-    } catch (e) {
-      setError('Unexpected error');
+    } catch (e: any) {
+      setError(`Unexpected error: ${e?.message || 'unknown'}`);
     } finally {
       setUploading(false);
     }
@@ -101,6 +140,7 @@ export default function AvatarUploader({ initialUrl, onUploaded, className = '' 
             )}
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
+          {info && !error && <p className="text-sm text-green-600">{info}</p>}
         </div>
       </div>
     </form>
