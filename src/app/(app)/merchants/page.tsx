@@ -1,17 +1,44 @@
 // src/app/(app)/merchants/page.tsx
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
+import { createSupabaseServiceClient } from "@/lib/supabase/serviceClient";
 import Link from "next/link";
+import { headers } from "next/headers";
 
-export const revalidate = 60; // cache list for 1 minute
+// Force dynamic so we always execute with current RLS/session until public read policy is set
+export const dynamic = "force-dynamic";
+// Optionally could use revalidate + caching once policies allow public reads
 
 export default async function MerchantsListPage() {
   const supabase = createSupabaseServerClient();
 
-  const { data: merchants, error } = await supabase
+  const initialResult = await supabase
     .from("merchants")
     .select("id, business_name, business_address, category, latitude, longitude, created_at")
     .order("created_at", { ascending: false })
     .limit(100);
+
+  let merchants = initialResult.data;
+  const error = initialResult.error;
+
+  // Optional privileged fallback (temporary) to bypass RLS if no policy yet.
+  // Guarded by server env: ENABLE_MERCHANTS_SERVICE_FALLBACK === 'true'
+  if (!error && (merchants?.length ?? 0) === 0 && process.env.ENABLE_MERCHANTS_SERVICE_FALLBACK === 'true') {
+    try {
+      const service = createSupabaseServiceClient();
+      const { data: svcData, error: svcError } = await service
+        .from("merchants")
+        .select("id, business_name, business_address, category, latitude, longitude, created_at")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (!svcError && svcData && svcData.length > 0) {
+        merchants = svcData;
+      }
+    } catch {
+      // silent; diagnostics below can hint
+    }
+  }
+  const hdrs = await headers();
+  const debug = hdrs.get("x-debug-merchants") === "1";
 
   return (
     <main className="min-h-[100dvh] p-6">
@@ -26,8 +53,19 @@ export default async function MerchantsListPage() {
         )}
 
         {!error && (!merchants || merchants.length === 0) && (
-          <div className="mt-6 rounded-lg border p-6 text-center text-sm text-gray-600">
-            No merchants yet.
+          <div className="mt-6 rounded-lg border p-6 text-sm text-gray-600 space-y-2">
+            <p className="text-center">No merchants returned.</p>
+            <ul className="list-disc list-inside text-xs text-gray-500 text-left">
+              <li>If you recently added a merchant, ensure Row Level Security (RLS) allows public select.</li>
+              <li>Create a policy such as: <code>create policy &quot;Public read merchants&quot; on merchants for select using ( true );</code></li>
+              <li>Or restrict to specific columns via a view if sensitive data appears later.</li>
+              <li>Confirm data exists using the Supabase SQL editor or service key.</li>
+            </ul>
+            {debug && (
+              <pre className="mt-2 max-h-40 overflow-auto rounded bg-gray-50 p-2 text-[10px] text-gray-700 border">
+{JSON.stringify({ merchants, error }, null, 2)}
+              </pre>
+            )}
           </div>
         )}
 

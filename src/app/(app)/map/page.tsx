@@ -5,12 +5,25 @@ export const revalidate = 120; // refresh merchant pins every 2 minutes
 
 export default async function Page({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
   const supabase = createSupabaseServerClient();
+  // Load merchants
   const { data, error } = await supabase
     .from('merchants')
     .select('id, business_name, latitude, longitude, category')
     .not('latitude', 'is', null)
     .not('longitude', 'is', null)
     .limit(500);
+
+  // Load current user profile for avatar (ignore errors silently)
+  const { data: { user } } = await supabase.auth.getUser();
+  let avatarUrl: string | undefined;
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('avatar_url')
+      .eq('id', user.id)
+      .maybeSingle();
+    avatarUrl = profile?.avatar_url || undefined;
+  }
 
   // Filter & narrow type
   const merchants: MerchantPin[] = (data || [])
@@ -36,7 +49,14 @@ export default async function Page({ searchParams }: { searchParams?: Record<str
 
   return (
     <section className="h-full">
-      <MapComponent merchants={merchants} loadError={error?.message} initialView={initialView} focusId={focus} />
+      <MapComponent
+        merchants={merchants}
+        loadError={error?.message}
+        initialView={initialView}
+        focusId={focus}
+        userAvatarUrl={avatarUrl}
+        showUserLocation
+      />
     </section>
   );
 }

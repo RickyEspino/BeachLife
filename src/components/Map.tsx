@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, { Marker, Popup, ViewState } from 'react-map-gl/mapbox';
+import Image from 'next/image';
 
 export type BasePin = {
   id: string;
@@ -28,9 +29,11 @@ type Props = {
   loadError?: string;
   initialView?: { latitude: number; longitude: number; zoom?: number };
   focusId?: string;
+  showUserLocation?: boolean;
+  userAvatarUrl?: string;
 };
 
-export default function MapComponent({ merchants = [], loadError, initialView, focusId }: Props) {
+export default function MapComponent({ merchants = [], loadError, initialView, focusId, showUserLocation = false, userAvatarUrl }: Props) {
   const [viewState, setViewState] = useState<Partial<ViewState>>(() => ({
     longitude: initialView?.longitude ?? -122.4,
     latitude: initialView?.latitude ?? 37.8,
@@ -39,22 +42,30 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
 
   const [beaches] = useState<Beach[]>(FALLBACK_BEACHES); // retained for now
   const [selected, setSelected] = useState<BasePin | MerchantPin | null>(null);
+  const [userPos, setUserPos] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [geoDenied, setGeoDenied] = useState(false);
+  // When showUserLocation is true we watch geolocation and render a pulsing marker.
+  // Avatar image (if provided) is displayed inside the marker; otherwise a fallback circle with 'You'.
 
   // Try to get the user's location and center the map only if no explicit initialView provided
   useEffect(() => {
-    if (initialView) return; // user specified
+    if (!showUserLocation) return;
     if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
+    const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
-        setViewState((v) => ({ ...v, latitude, longitude, zoom: 12 }));
+        setUserPos({ latitude, longitude });
+        if (!initialView) {
+          setViewState((v) => ({ ...v, latitude, longitude }));
+        }
       },
       (err) => {
-        console.debug('Geolocation error', err.message);
+        if (err.code === err.PERMISSION_DENIED) setGeoDenied(true);
       },
-      { enableHighAccuracy: true, maximumAge: 1000 * 60 * 5 }
+      { enableHighAccuracy: true, maximumAge: 1000 * 30, timeout: 10000 }
     );
-  }, [initialView]);
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [showUserLocation, initialView]);
 
   // Auto focus a merchant if focusId provided
   useEffect(() => {
@@ -118,6 +129,34 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
         {loadError && (
           <div className="absolute left-2 top-2 rounded bg-red-600/80 px-3 py-1 text-xs font-medium text-white">
             Failed to load merchants
+          </div>
+        )}
+
+        {showUserLocation && userPos && (
+          <Marker longitude={userPos.longitude} latitude={userPos.latitude} anchor="center">
+            <div className="relative">
+              <div className="absolute inset-0 animate-ping rounded-full bg-blue-400/40" />
+              {userAvatarUrl ? (
+                <Image
+                  src={userAvatarUrl}
+                  alt="You"
+                  width={32}
+                  height={32}
+                  className="rounded-full border-2 border-white shadow-md object-cover"
+                  priority
+                />
+              ) : (
+                <div className="h-8 w-8 rounded-full border-2 border-white bg-blue-500 text-white flex items-center justify-center text-xs font-semibold shadow-md">
+                  You
+                </div>
+              )}
+            </div>
+          </Marker>
+        )}
+
+        {showUserLocation && geoDenied && !userPos && (
+          <div className="absolute left-2 top-10 rounded bg-yellow-500/90 px-3 py-1 text-[10px] font-medium text-white">
+            Location blocked
           </div>
         )}
       </Map>
