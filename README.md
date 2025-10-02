@@ -42,6 +42,10 @@ Key application routes (non-exhaustive):
 - `/map` – Interactive beach / merchant map
 	- Merchant locations with latitude/longitude are rendered as pins (🏪) refreshed every 2 minutes.
 		- Supports focusing via query params: `/map?lat=..&lng=..&z=15&focus=<merchantId>` to center and open popup.
+		- Category chips (Google / Snapchat inspired) overlay lets users filter visible merchant pins client-side by category. Toggle one (single-select) or extend component for multi-select.
+			- Implemented in `CategoryChips` (`src/components/CategoryChips.tsx`) and injected on the map page with dynamic import (client only).
+			- Current styling variants: `google` (pill buttons) and `snap` (blurred gradient rounded group). Adjust via `variant` prop.
+			- Filtering is presently DOM-based (hides markers by data attributes) to avoid refetch; can be promoted to state-level filtering inside `MapComponent` later.
 - `/community` – Community feed (placeholder)
 - `/reels` – Short-form content (placeholder)
 - `/me` – User dashboard

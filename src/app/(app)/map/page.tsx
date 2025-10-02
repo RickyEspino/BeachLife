@@ -1,5 +1,6 @@
 import MapComponent, { type MerchantPin } from '@/components/Map';
 import { createSupabaseServerClient } from '@/lib/supabase/serverClient';
+import MapCategoryOverlay from '@/components/MapCategoryOverlay';
 
 export const revalidate = 120; // refresh merchant pins every 2 minutes
 
@@ -47,8 +48,11 @@ export default async function Page({ searchParams }: { searchParams?: Record<str
     zoom: Number.isFinite(z) ? z : 14
   } : undefined;
 
+  // Derive unique categories (simple capitalization)
+  const categories = Array.from(new Set(merchants.map(m => m.category).filter(Boolean))) as string[];
+
   return (
-    <section className="h-full">
+    <section className="h-full relative">
       <MapComponent
         merchants={merchants}
         loadError={error?.message}
@@ -57,6 +61,7 @@ export default async function Page({ searchParams }: { searchParams?: Record<str
         userAvatarUrl={avatarUrl}
         showUserLocation
       />
+      <MapCategoryOverlay categories={categories} />
     </section>
   );
 }
