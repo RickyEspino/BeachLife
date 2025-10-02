@@ -39,7 +39,6 @@ export default function MeDashboard(props: {
   adminHref?: string;
 
   // Avatar controls
-  updateAvatarAction: (formData: FormData) => void | Promise<void>;
   removeAvatarAction: (formData?: FormData) => void | Promise<void>;
 }) {
   const {
@@ -59,7 +58,6 @@ export default function MeDashboard(props: {
     claimProfileCompleteAction,
     isAdmin = false,
     adminHref = "/admin",
-    updateAvatarAction,
     removeAvatarAction,
   } = props;
 

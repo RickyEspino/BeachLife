@@ -88,8 +88,9 @@ export default function AvatarUploader({ initialUrl, onUploaded, className = '' 
       setPreview(publicUrl);
       setInfo('Avatar updated');
       onUploaded?.(publicUrl);
-    } catch (e: any) {
-      setError(`Unexpected error: ${e?.message || 'unknown'}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      setError(`Unexpected error: ${message}`);
     } finally {
       setUploading(false);
     }
