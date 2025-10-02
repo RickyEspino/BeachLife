@@ -48,6 +48,24 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
   const [geoDenied, setGeoDenied] = useState(false);
   // Locator is now on-demand only; no persistent watch.
 
+  // Auto attempt a single locate on mount (or when showUserLocation toggles on)
+  useEffect(() => {
+    if (!showUserLocation) return;
+    if (userPos || locating) return; // already have or in progress
+    // If Permissions API available, only auto-run if granted or prompt (avoid denied spam)
+    let cancelled = false;
+    (async () => {
+      try {
+        if (navigator.permissions) {
+          const status = await navigator.permissions.query({ name: 'geolocation' });
+          if (status.state === 'denied') return; // don't auto ask if denied
+        }
+        if (!cancelled) handleLocate();
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [showUserLocation, userPos, locating]);
+
   function handleLocate() {
     if (!navigator.geolocation) return;
     setLocating(true);
