@@ -4,11 +4,17 @@ import { useEffect, useState } from 'react';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, { Marker, Popup, ViewState } from 'react-map-gl/mapbox';
 
-type Beach = {
+export type BasePin = {
   id: string;
   name: string;
   latitude: number;
   longitude: number;
+};
+
+type Beach = BasePin;
+
+export type MerchantPin = BasePin & {
+  category?: string;
 };
 
 const FALLBACK_BEACHES: Beach[] = [
@@ -17,15 +23,20 @@ const FALLBACK_BEACHES: Beach[] = [
   { id: 'manhattan', name: 'Manhattan Beach', latitude: 33.8847, longitude: -118.4109 },
 ];
 
-export default function MapComponent() {
+type Props = {
+  merchants?: MerchantPin[];
+  loadError?: string;
+};
+
+export default function MapComponent({ merchants = [], loadError }: Props) {
   const [viewState, setViewState] = useState<Partial<ViewState>>({
     longitude: -122.4,
     latitude: 37.8,
     zoom: 10,
   });
 
-  const [beaches, setBeaches] = useState<Beach[]>(FALLBACK_BEACHES);
-  const [selectedBeach, setSelectedBeach] = useState<Beach | null>(null);
+  const [beaches] = useState<Beach[]>(FALLBACK_BEACHES); // retained for now
+  const [selected, setSelected] = useState<BasePin | MerchantPin | null>(null);
 
   // Try to get the user's location and center the map
   useEffect(() => {
@@ -52,32 +63,56 @@ export default function MapComponent() {
         style={{ width: '100%', height: '100%' }}
         mapStyle="mapbox://styles/mapbox/streets-v11"
       >
-        {beaches.map((b) => (
+        {/* Merchant pins */}
+        {merchants.map(m => (
+          <Marker key={m.id} longitude={m.longitude} latitude={m.latitude} anchor="bottom">
+            <button
+              aria-label={`Merchant: ${m.name}`}
+              className="text-xl drop-shadow-sm"
+              onClick={e => { e.preventDefault(); setSelected(m); }}
+            >
+              🏪
+            </button>
+          </Marker>
+        ))}
+
+        {/* Fallback beach pins (could later be hidden or toggled) */}
+        {merchants.length === 0 && beaches.map((b) => (
           <Marker key={b.id} longitude={b.longitude} latitude={b.latitude} anchor="bottom">
             <button
               className="text-2xl"
-              onClick={(e) => {
-                e.preventDefault();
-                setSelectedBeach(b);
-              }}
+              onClick={(e) => { e.preventDefault(); setSelected(b); }}
             >
               📍
             </button>
           </Marker>
         ))}
 
-        {selectedBeach && (
+        {selected && (
           <Popup
-            longitude={selectedBeach.longitude}
-            latitude={selectedBeach.latitude}
-            onClose={() => setSelectedBeach(null)}
+            longitude={selected.longitude}
+            latitude={selected.latitude}
+            onClose={() => setSelected(null)}
             closeOnClick={false}
             anchor="top"
           >
-            <div className="text-sm font-medium">{selectedBeach.name}</div>
+            <div className="text-sm font-medium">{selected.name}</div>
+            {isMerchantPin(selected) && selected.category && (
+              <div className="text-xs text-gray-600 mt-1">{selected.category}</div>
+            )}
           </Popup>
+        )}
+
+        {loadError && (
+          <div className="absolute left-2 top-2 rounded bg-red-600/80 px-3 py-1 text-xs font-medium text-white">
+            Failed to load merchants
+          </div>
         )}
       </Map>
     </div>
   );
+}
+
+function isMerchantPin(p: BasePin | MerchantPin): p is MerchantPin {
+  return (p as MerchantPin).category !== undefined;
 }

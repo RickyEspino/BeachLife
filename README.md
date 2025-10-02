@@ -40,6 +40,7 @@ Key application routes (non-exhaustive):
 
 - `/now` – Current beach conditions dashboard
 - `/map` – Interactive beach / merchant map
+	- Merchant locations with latitude/longitude are rendered as pins (🏪) refreshed every 2 minutes.
 - `/community` – Community feed (placeholder)
 - `/reels` – Short-form content (placeholder)
 - `/me` – User dashboard
