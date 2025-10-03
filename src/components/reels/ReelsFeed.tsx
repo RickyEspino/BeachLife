@@ -10,9 +10,13 @@ interface FeedResponse {
 interface Props {
   initial: ReelItem[];
   initialNextCursor?: string;
+  immersive?: boolean;
+  onTouchStart?: React.TouchEventHandler<HTMLDivElement>;
+  onTouchMove?: React.TouchEventHandler<HTMLDivElement>;
+  onTouchEnd?: React.TouchEventHandler<HTMLDivElement>;
 }
 
-export default function ReelsFeed({ initial, initialNextCursor }: Props) {
+export default function ReelsFeed({ initial, initialNextCursor, immersive, onTouchStart, onTouchMove, onTouchEnd }: Props) {
   const [items, setItems] = useState<ReelItem[]>(initial);
   const [nextCursor, setNextCursor] = useState<string | undefined>(initialNextCursor);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -115,24 +119,32 @@ export default function ReelsFeed({ initial, initialNextCursor }: Props) {
   }, []);
 
   return (
-  <div className="relative w-full overflow-y-auto snap-y snap-mandatory scrollbar-none bg-black overscroll-contain" style={{ height: 'calc(var(--vh, 1vh) * 100)' }}>
+    <div
+      className="relative w-full overflow-y-auto snap-y snap-mandatory scrollbar-none bg-black overscroll-contain"
+      style={{ height: 'calc(var(--vh, 1vh) * 100)' }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
       {items.map(item => (
-        <ReelCard key={item.id} item={item} onToggleLike={handleToggleLike} liking={likingIds.has(item.id)} />
+        <ReelCard key={item.id} item={item} immersive={immersive} onToggleLike={handleToggleLike} liking={likingIds.has(item.id)} />
       ))}
       <div ref={sentinelRef} />
-      <div className="absolute left-2 top-2 z-20 text-[10px] rounded bg-black/50 text-white px-2 py-1">
-        {items.length} reels
-      </div>
+      {!immersive && (
+        <div className="absolute left-2 top-2 z-20 text-[10px] rounded bg-black/50 text-white px-2 py-1">
+          {items.length} reels
+        </div>
+      )}
       <div aria-live="polite" className="sr-only">
         {loadingMore ? 'Loading more reels' : ''}
       </div>
-      {loadingMore && (
+      {!immersive && loadingMore && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs text-white/70 animate-pulse" role="status" aria-label="Loading more reels">Loading…</div>
       )}
-      {error && (
+      {!immersive && error && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs text-red-400">{error}</div>
       )}
-      {reachedEnd && items.length > 0 && (
+      {!immersive && reachedEnd && items.length > 0 && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] text-white/50">No more reels</div>
       )}
       {items.length === 0 && !loadingMore && !error && (

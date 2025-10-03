@@ -35,3 +35,8 @@ html, body { height: 100%; }
 /* Mapbox customizations */
 /* Hide default user location dot (we render a custom avatar marker) but keep accuracy circle */
 .mapboxgl-user-location-dot { display: none !important; }
+
+/* Reels immersive mode */
+html.reels-immersive nav[role="navigation"] { opacity: 0; pointer-events: none; transition: opacity 0.25s ease; }
+html.reels-immersive nav[role="navigation"] * { pointer-events: none !important; }
+html.reels-immersive .reels-immersive-fade { opacity: 0 !important; }

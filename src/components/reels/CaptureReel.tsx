@@ -18,13 +18,14 @@ export default function CaptureReel({ onCancel, onCreated }: Props) {
   const [caption, setCaption] = useState('');
   const [uploading, setUploading] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [facing, setFacing] = useState<'environment' | 'user'>('environment');
 
   useEffect(() => {
     let active = true;
     async function init() {
       try {
         setError(null);
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing }, audio: false });
         if (!active) return;
         streamRef.current = stream;
         if (videoRef.current) {
@@ -42,7 +43,7 @@ export default function CaptureReel({ onCancel, onCreated }: Props) {
       active = false;
       streamRef.current?.getTracks().forEach(t => t.stop());
     };
-  }, []);
+  }, [facing]);
 
   const capture = useCallback(() => {
     if (!videoRef.current) return;
@@ -109,6 +110,10 @@ export default function CaptureReel({ onCancel, onCreated }: Props) {
     <div className="space-y-4">
       <h2 className="text-sm font-semibold tracking-wide text-gray-800">Capture Reel</h2>
       {error && <p className="text-xs text-red-600" role="alert">{error}</p>}
+      <div className="flex items-center gap-2 text-[10px] text-gray-600">
+        <span>Camera:</span>
+        <button type="button" onClick={() => { setInitializing(true); setFacing(f => f === 'environment' ? 'user' : 'environment'); }} className="px-2 py-1 rounded border border-gray-300 text-xs bg-white hover:bg-gray-50">{facing === 'environment' ? 'Switch to Front' : 'Switch to Back'}</button>
+      </div>
       {!capturedBlob && (
         <div className="relative aspect-[9/16] w-40 bg-black rounded overflow-hidden">
           {initializing && <div className="absolute inset-0 flex items-center justify-center text-xs text-white/70">Starting camera…</div>}

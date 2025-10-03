@@ -17,6 +17,9 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
   const [showCreate, setShowCreate] = useState(false); // expand secondary actions
   const [mountedCreate, setMountedCreate] = useState(false);
   const [mode, setMode] = useState<'upload' | 'capture'>('upload');
+  const [immersive, setImmersive] = useState(false);
+  const touchStartY = useRef<number | null>(null);
+  const touchDelta = useRef<number>(0);
   const fabRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -64,11 +67,39 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
     };
   }, []);
 
+  // Reflect immersive state on <html>
+  useEffect(() => {
+    const cls = 'reels-immersive';
+    if (immersive) document.documentElement.classList.add(cls);
+    else document.documentElement.classList.remove(cls);
+  }, [immersive]);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    touchStartY.current = e.touches[0].clientY;
+    touchDelta.current = 0;
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (touchStartY.current == null) return;
+    const currentY = e.touches[0].clientY;
+    touchDelta.current = currentY - touchStartY.current; // positive if swiping down
+  };
+  const onTouchEnd = () => {
+    const delta = touchDelta.current;
+    if (Math.abs(delta) > 40) {
+      if (delta < 0 && !immersive) setImmersive(true); // swipe up to enter immersive
+      if (delta > 0 && immersive) setImmersive(false); // swipe down to exit
+    }
+    touchStartY.current = null;
+    touchDelta.current = 0;
+  };
+
   return (
-  <div className="relative w-full bg-black" style={{ height: 'calc(var(--vh, 1vh) * 100)' }}>
-      <ReelsFeed initial={initial} initialNextCursor={initialNextCursor} />
+    <div className="relative w-full bg-black" style={{ height: 'calc(var(--vh, 1vh) * 100)' }}>
+      <ReelsFeed initial={initial} initialNextCursor={initialNextCursor} immersive={immersive} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} />
 
       {/* Creation actions */}
+      {!immersive && (
       <div className="fixed right-4 bottom-[110px] z-[60] flex flex-col items-end">
         <div className={`flex items-center gap-2 mb-2 transition-all duration-300 ${showCreate ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`} aria-hidden={!showCreate}>
           <button
@@ -95,6 +126,7 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
           <span className={`text-[26px] leading-none -mt-px transition-transform ${showCreate ? 'rotate-45' : ''}`}>＋</span>
         </button>
       </div>
+      )}
 
       {/* Panel */}
       <div className="fixed inset-0 z-[70] flex justify-end pointer-events-none" aria-hidden={!panelOpen}>
