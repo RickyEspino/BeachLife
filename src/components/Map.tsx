@@ -289,23 +289,20 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
   // Determine if the user avatar (self) sits inside a cluster; if so compute an offset direction.
   const selfOffset = useMemo(() => {
     if (!showUserLocation || !userPos || !userAvatarUrl) return { dx: 0, dy: 0 };
-    // meters per pixel at current latitude & zoom
     const lat = userPos.latitude;
     const z = zoom || 0;
     const metersPerPixel = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z);
-    // If cluster center within (avatarRadius + clusterRadius) * meters threshold, offset.
+    const thresholdMeters = metersPerPixel * 50; // ~50px visual radius sum
     const nearby = clusters.find(c => {
       const dist = distanceMeters(c.latitude, c.longitude, userPos.latitude, userPos.longitude);
-      // Treat cluster visual radius roughly 28px, avatar 22px => sum ~50px => meters threshold:
-      return dist < metersPerPixel * 50 && !(c.count === 1 && c.points[0].type === 'user' && c.points[0].id.endsWith(userPos.latitude.toString()));
+      // Ignore cluster representing only the user itself
+      if (c.count === 1 && c.points[0].type === 'user') return false;
+      return dist < thresholdMeters;
     });
     if (!nearby) return { dx: 0, dy: 0 };
-    // Offset vector away from cluster center
     const angle = Math.atan2(userPos.latitude - nearby.latitude, userPos.longitude - nearby.longitude) || 0;
-    const px = 42; // push avatar 42px out so its ring clears the cluster circle
-    const dx = Math.cos(angle) * px;
-    const dy = Math.sin(angle) * px;
-    return { dx, dy };
+    const px = 42;
+    return { dx: Math.cos(angle) * px, dy: Math.sin(angle) * px };
   }, [showUserLocation, userPos, userAvatarUrl, clusters, zoom]);
 
   const handleClusterClick = (c: Cluster) => {
@@ -316,6 +313,18 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
 
   return (
     <div className="fixed inset-0" role="region" aria-label="Interactive map of merchants and beaches">
+      {!process.env.NEXT_PUBLIC_MAPBOX_TOKEN && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-900 dark:to-gray-800">
+          <div className="text-lg font-semibold">Map disabled</div>
+          <p className="text-sm max-w-sm text-gray-600 dark:text-gray-300">No Mapbox token configured. Set <code className="px-1 py-0.5 rounded bg-gray-800 text-white text-[11px]">NEXT_PUBLIC_MAPBOX_TOKEN</code> in your env to enable interactive maps.</p>
+          <div className="grid gap-2 text-xs text-left bg-white/70 dark:bg-white/10 rounded p-3 shadow">
+            <span className="font-medium">Debug Info:</span>
+            <span>Merchants loaded: {merchants.length}</span>
+            <span>Shared users: {sharedUsers.length}</span>
+            {loadError && <span className="text-red-600">Load error: {loadError}</span>}
+          </div>
+        </div>
+      )}
       <Map
   {...viewState}
         onMove={(evt) => setViewState(evt.viewState)}
@@ -331,16 +340,21 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
         )}
         {/* Clustered points (merchants + shared users) */}
         {clusters.map(c => {
+          const renderNow = Date.now();
+          const promoState = (id: string) => {
+            if (!doubleIds.includes(id)) return { is2x: false, urgent: false, fading: false, expiresAt: 0, msLeft: 0 };
+            const expiresAt = doubleMeta[id] || 0;
+            if (!expiresAt) return { is2x: true, urgent: false, fading: false, expiresAt: 0, msLeft: 0 };
+            const msLeft = expiresAt - renderNow;
+            const urgent = msLeft > 0 && msLeft < 30 * 60 * 1000;
+            const fading = !urgent && msLeft > 0 && msLeft < 60 * 60 * 1000;
+            return { is2x: true, urgent, fading, expiresAt, msLeft };
+          };
           if (c.count === 1) {
             const p = c.points[0];
             if (p.type === 'merchant') {
-              if (showDoubleOnly && !doubleIds.includes(p.id)) return null;
-              const is2x = doubleIds.includes(p.id);
-              const expiresAt = doubleMeta[p.id] || 0;
-              const now = Date.now();
-              const msLeft = expiresAt ? expiresAt - now : 0;
-              const fading = is2x && expiresAt !== 0 && msLeft < 60 * 60 * 1000 && msLeft >= 30 * 60 * 1000; // 60m-30m
-              const urgent = is2x && expiresAt !== 0 && msLeft < 30 * 60 * 1000 && msLeft > 0; // final 30m
+              const { is2x, urgent, fading, msLeft } = promoState(p.id);
+              if (showDoubleOnly && !is2x) return null;
               return (
                 <Marker key={p.id} longitude={p.longitude} latitude={p.latitude} anchor="bottom">
                   <div className="relative" data-merchant-id={p.id} data-category={p.category || ''}>
@@ -388,16 +402,13 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
           }
           // cluster marker
           // Determine if any merchant in cluster has 2x active
-          const now = Date.now();
           let has2x = false; let hasUrgent = false; let hasFading = false;
           for (const pt of c.points) {
-            if (pt.type === 'merchant' && doubleIds.includes(pt.id)) {
+            if (pt.type !== 'merchant') continue;
+            const st = promoState(pt.id);
+            if (st.is2x) {
               has2x = true;
-              const exp = doubleMeta[pt.id] || 0;
-              if (exp) {
-                const left = exp - now;
-                if (left < 30 * 60 * 1000 && left > 0) hasUrgent = true; else if (left < 60 * 60 * 1000) hasFading = true;
-              }
+              if (st.urgent) hasUrgent = true; else if (st.fading) hasFading = true;
             }
           }
           return (

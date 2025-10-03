@@ -28,7 +28,13 @@ export default async function Page({ searchParams }: { searchParams?: Record<str
     if (profile?.avatar_url) userAvatarUrl = profile.avatar_url as string;
   }
 
-  // Filter & narrow type
+  // Filter & narrow type + normalize categories (lowercase, replace spaces/slashes with underscores)
+  const normalizeCat = (c: unknown): string | undefined => {
+    if (!c || typeof c !== 'string') return undefined;
+    const trimmed = c.trim();
+    if (!trimmed) return undefined;
+    return trimmed.toLowerCase().replace(/[\s/]+/g, '_');
+  };
   const merchants: MerchantPin[] = (data || [])
     .filter(m => typeof m.latitude === 'number' && typeof m.longitude === 'number')
     .map(m => ({
@@ -36,7 +42,7 @@ export default async function Page({ searchParams }: { searchParams?: Record<str
       name: m.business_name || 'Unnamed',
       latitude: m.latitude as number,
       longitude: m.longitude as number,
-      category: m.category || undefined,
+      category: normalizeCat(m.category),
     }));
 
   const lat = parseFloat(String(searchParams?.lat ?? ''));
@@ -50,7 +56,7 @@ export default async function Page({ searchParams }: { searchParams?: Record<str
     zoom: Number.isFinite(z) ? z : 14
   } : undefined;
 
-  // Derive unique categories (simple capitalization)
+  // Derive unique normalized categories
   const categories = Array.from(new Set(merchants.map(m => m.category).filter(Boolean))) as string[];
 
   return (
