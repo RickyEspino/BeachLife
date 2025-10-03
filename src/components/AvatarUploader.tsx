@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState, FormEvent } from 'react';
+import { useRef, useState } from 'react';
 import Image from 'next/image';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browserClient';
 
@@ -17,66 +17,29 @@ export default function AvatarUploader({ initialUrl, onUploaded, className = '' 
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
-  async function ensureProfile(userId: string) {
-    // Upsert a profile row if it doesn't exist so the update doesn't silently affect 0 rows
-    const { error: upsertErr } = await supabase
-      .from('profiles')
-      .upsert({ id: userId }, { onConflict: 'id', ignoreDuplicates: true });
-    if (upsertErr) {
-      // Not fatal for uploading avatar but note it
-      console.warn('Profile upsert warning', upsertErr);
-    }
-  }
-
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function handlePick(file: File) {
     setError(null);
     setInfo(null);
-    const file = inputRef.current?.files?.[0];
-    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError('Please choose an image.'); return; }
     if (file.size > 5 * 1024 * 1024) { setError('File too large (max 5MB).'); return; }
 
+    setUploading(true);
     try {
-      setUploading(true);
       const { data: { user }, error: authErr } = await supabase.auth.getUser();
-      if (authErr) { setError(`Auth error: ${authErr.message}`); return; }
-      if (!user) { setError('Not authenticated'); return; }
+      if (authErr || !user) { setError('Not authenticated'); return; }
 
-      await ensureProfile(user.id);
+      // Overwrite a stable path to avoid orphan files; cache bust via query param
+      const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const path = `${user.id}/avatar.${ext || 'png'}`;
 
-      const ext = (file.name.split('.').pop() || 'png').toLowerCase();
-      const folder = `${user.id}`; // first path segment is user id for RLS
-      const filename = `avatar-${Date.now()}.${ext}`;
-      const path = `${folder}/${filename}`;
+      const { error: upErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, file, { upsert: true, contentType: file.type || 'image/png' });
 
-      // Optional: clean older files to avoid accumulation (best effort)
-      try {
-        const { data: listData } = await supabase.storage.from('avatars').list(folder, { limit: 20 });
-        if (listData && listData.length > 5) {
-          const toRemove = listData.map(f => `${folder}/${f.name}`);
-          await supabase.storage.from('avatars').remove(toRemove);
-        }
-      } catch (cleanupErr) {
-        console.warn('Avatar cleanup failed', cleanupErr);
-      }
+      if (upErr) { setError(`Upload failed: ${upErr.message}`); return; }
 
-      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, {
-        upsert: true,
-        contentType: file.type || 'image/png'
-      });
-      console.log('UPLOAD RES', { path, fileType: file.type, size: file.size }, upErr);
-      if (upErr) {
-        if (upErr.message.toLowerCase().includes('duplicate')) {
-          setError('File already exists and cannot be replaced. Try a different image.');
-        } else {
-          setError(`Upload failed: ${upErr.message}`);
-        }
-        return;
-      }
-
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
-      const publicUrl = urlData?.publicUrl;
-      if (!publicUrl) { setError('Could not get public URL'); return; }
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+      const publicUrl = `${data.publicUrl}?v=${Date.now()}`; // bust caching
 
       const { error: profErr } = await supabase
         .from('profiles')
@@ -95,16 +58,17 @@ export default function AvatarUploader({ initialUrl, onUploaded, className = '' 
     }
   }
 
-  function handleFileChange() {
+  function onFileChange() {
     const file = inputRef.current?.files?.[0];
     if (file) {
       const url = URL.createObjectURL(file);
       setPreview(url);
+      handlePick(file);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className={`space-y-3 ${className}`}>      
+    <div className={`space-y-3 ${className}`}>
       <div className="flex items-center gap-4">
         <div className="relative h-20 w-20 rounded-full overflow-hidden bg-gray-100 border">
           {preview ? (
@@ -118,31 +82,14 @@ export default function AvatarUploader({ initialUrl, onUploaded, className = '' 
             ref={inputRef}
             type="file"
             accept="image/*"
-            onChange={handleFileChange}
-            className="block w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded-md file:border file:border-gray-200 file:bg-white file:text-sm file:font-medium hover:file:bg-gray-50"
+            onChange={onFileChange}
+            disabled={uploading}
+            className="block w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded-md file:border file:border-gray-200 file:bg-white file:text-sm file:font-medium hover:file:bg-gray-50 disabled:opacity-50"
           />
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={uploading}
-              className="rounded-lg bg-black text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
-            >
-              {uploading ? 'Uploading...' : 'Save Avatar'}
-            </button>
-            {preview && initialUrl && preview !== initialUrl && (
-              <button
-                type="button"
-                onClick={() => { setPreview(initialUrl); if (inputRef.current) inputRef.current.value=''; }}
-                className="rounded-lg border px-4 py-2 text-sm"
-              >
-                Reset
-              </button>
-            )}
-          </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           {info && !error && <p className="text-sm text-green-600">{info}</p>}
         </div>
       </div>
-    </form>
+    </div>
   );
 }
