@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
+import OnboardingAvatarClient from './OnboardingAvatarClient';
 
 type Props = { searchParams?: { [k: string]: string | string[] | undefined } };
 
@@ -64,189 +65,111 @@ export default async function OnboardingPage({ searchParams }: Props) {
     redirect("/now");
   }
 
-  // Avatar upload/remove (same UX you have elsewhere)
-  async function uploadAvatarAction(formData: FormData) {
-    "use server";
-    const supabase = createSupabaseServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const file = formData.get("avatar") as File | null;
-    if (!file || file.size === 0) return;
-    if (file.size > 5 * 1024 * 1024) return;
-
-    const ext = (file.name.split(".").pop() || "png").toLowerCase();
-    const path = `avatars/${user.id}/avatar-${Date.now()}.${ext}`;
-
-    const { error: upErr } = await supabase
-      .storage
-      .from("avatars")
-      .upload(path, file, { upsert: true, contentType: file.type || "image/png" });
-
-    if (!upErr) {
-      const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
-      const publicUrl = urlData?.publicUrl;
-
-      if (publicUrl) {
-        await supabase
-          .from("profiles")
-          .upsert({ id: user.id, avatar_url: publicUrl, updated_at: new Date().toISOString() });
-
-        revalidatePath("/(app)/onboarding");
-        revalidatePath("/(app)/me");
-      }
-    }
-  }
-
-  async function removeAvatarAction() {
-    "use server";
-    const supabase = createSupabaseServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    await supabase
-      .from("profiles")
-      .update({ avatar_url: null, updated_at: new Date().toISOString() })
-      .eq("id", user.id);
-
-    revalidatePath("/(app)/onboarding");
-    revalidatePath("/(app)/me");
-  }
-
   const hasAvatar = !!profile?.avatar_url;
 
+  // Remove avatar action (parity with Me page)
+  async function removeAvatarAction() {
+    "use server";
+    const supa = createSupabaseServerClient();
+    const { data: { user } } = await supa.auth.getUser();
+    if (!user) return;
+    await supa
+      .from('profiles')
+      .update({ avatar_url: null, updated_at: new Date().toISOString() })
+      .eq('id', user.id);
+    revalidatePath('/(app)/onboarding');
+    revalidatePath('/(app)/me');
+  }
+
   return (
-    <main className="min-h-[100dvh] bg-gradient-to-b from-sand-50/40 to-white">
-      {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 -z-10 bg-[radial-gradient(90%_60%_at_10%_-10%,rgba(46,196,182,0.25),transparent),radial-gradient(80%_55%_at_110%_-20%,rgba(124,111,197,0.2),transparent)]" />
-        <div className="mx-auto w-full max-w-xl px-5 pt-[calc(env(safe-area-inset-top,0px)+24px)] pb-6">
+    <main className="min-h-[100dvh] bg-gradient-to-br from-sand-50 via-white to-sand-100/70">
+      <div className="mx-auto w-full max-w-3xl px-5 pt-[calc(env(safe-area-inset-top,0px)+28px)] pb-[calc(env(safe-area-inset-bottom,0px)+40px)] space-y-8">
+        {/* Header / branding */}
+        <header className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-black text-white grid place-items-center font-semibold">
-              BL
-            </div>
+            <div className="h-11 w-11 rounded-xl bg-black text-white grid place-items-center font-semibold shadow-sm">BL</div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-gray-600">Welcome to</p>
-              <h1 className="text-2xl font-semibold leading-tight">BeachLife 🌴</h1>
+              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">{isOnboarded ? 'Update your profile' : 'Welcome to BeachLife'} <span aria-hidden>🌴</span></h1>
+              <p className="text-sm text-gray-600 mt-1 max-w-prose">Earn points, track conditions and join the community. Just a couple quick steps.</p>
             </div>
           </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <span className="inline-flex items-center rounded-full border px-3 py-1 text-xs text-gray-700 bg-white/70">
-              Earn points daily
-            </span>
-            <span className="inline-flex items-center rounded-full border px-3 py-1 text-xs text-gray-700 bg-white/70">
-              Map & surf status
-            </span>
-            <span className="inline-flex items-center rounded-full border px-3 py-1 text-xs text-gray-700 bg-white/70">
-              Community & reels
-            </span>
+          {/* Simple progress indicator */}
+          <div className="flex items-center gap-3 text-xs font-medium text-gray-600">
+            <div className="flex items-center gap-1">
+              <span className={`h-2 w-2 rounded-full ${hasAvatar ? 'bg-emerald-500' : 'bg-gray-300'}`} /> Avatar
+            </div>
+            <span className="text-gray-300">•</span>
+            <div className="flex items-center gap-1">
+              <span className={`h-2 w-2 rounded-full ${profile?.username ? 'bg-emerald-500' : 'bg-gray-300'}`} /> Username
+            </div>
+            <span className="text-gray-300">•</span>
+            <div className="flex items-center gap-1">
+              <span className={`h-2 w-2 rounded-full ${(hasAvatar && profile?.username) ? 'bg-emerald-500' : 'bg-gray-300'}`} /> Complete
+            </div>
           </div>
-        </div>
-      </section>
+        </header>
 
-      {/* Avatar uploader */}
-      <section className="mx-auto w-full max-w-xl px-5">
-        <div className="rounded-2xl border bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            {hasAvatar ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={profile?.avatar_url ?? ""}
-                alt="Current avatar"
-                className="h-16 w-16 rounded-full object-cover border"
-              />
-            ) : (
-              <div className="h-16 w-16 rounded-full border bg-gradient-to-br from-gray-100 to-gray-200" />
-            )}
-
-            <div className="flex-1">
-              <div className="font-medium">Your avatar</div>
-              <p className="text-sm text-gray-600">
-                Upload a square image (PNG or JPG) for best results.
-              </p>
-
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <form action={uploadAvatarAction} className="flex items-center gap-2">
-                  <input
-                    type="file"
-                    name="avatar"
-                    accept="image/*"
-                    className="block w-44 text-sm file:mr-3 file:py-2 file:px-3 file:rounded-md file:border file:border-gray-200 file:bg-white file:text-sm file:font-medium hover:file:bg-gray-50"
-                    required
-                  />
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-black text-white px-4 py-2 text-sm font-medium"
-                  >
-                    Upload
-                  </button>
-                </form>
-
-                {hasAvatar && (
-                  <form action={removeAvatarAction}>
-                    <button
-                      type="submit"
-                      className="text-sm text-red-600 hover:text-red-700 underline underline-offset-4"
-                    >
-                      Remove
-                    </button>
-                  </form>
-                )}
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Avatar card */}
+          <div className="relative rounded-2xl border bg-white/80 backdrop-blur-sm p-5 shadow-sm space-y-5">
+            <div className="flex items-center gap-4">
+              {hasAvatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={profile?.avatar_url ?? ''} alt="Current avatar" className="h-20 w-20 rounded-full object-cover ring-2 ring-emerald-100 border" />
+              ) : (
+                <div className="h-20 w-20 rounded-full border bg-gradient-to-br from-gray-100 to-gray-200 ring-1 ring-inset ring-white" />
+              )}
+              <div>
+                <div className="font-semibold">Your avatar</div>
+                <p className="text-xs text-gray-600 max-w-[18ch]">Add a photo so friends recognize you.</p>
               </div>
             </div>
+            <OnboardingAvatarClient initialUrl={profile?.avatar_url || undefined} />
+            <div className="flex items-center justify-between">
+              {!hasAvatar && <p className="text-xs text-amber-600">Tip: square images crop best.</p>}
+              {hasAvatar && (
+                <form action={removeAvatarAction}>
+                  <button type="submit" className="text-xs text-red-600 hover:text-red-700 underline underline-offset-4">Remove</button>
+                </form>
+              )}
+            </div>
           </div>
 
-          {!hasAvatar && (
-            <div className="mt-3 rounded-md bg-sand-50 p-3 text-sm text-gray-700">
-              Tip: adding an avatar now helps unlock your <span className="font-medium">Profile Complete</span> bonus.
+          {/* Username / completion card */}
+            <div className="rounded-2xl border bg-white/80 backdrop-blur-sm p-5 shadow-sm flex flex-col">
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold leading-tight">{profile?.username ? 'Edit username' : 'Choose a username'}</h2>
+                <p className="text-xs text-gray-600 mt-1">Unique, short & memorable. You can change it later.</p>
+              </div>
+              <form action={saveProfileAction} className="space-y-4 mt-auto" noValidate>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600">Username</label>
+                  <input
+                    name="username"
+                    defaultValue={profile?.username ?? ''}
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/60 focus:border-emerald-500"
+                    placeholder="beachfan123"
+                    required
+                  />
+                </div>
+                <button className="w-full rounded-md bg-emerald-600 hover:bg-emerald-700 text-white py-2 text-sm font-medium shadow focus:outline-none focus:ring-2 focus:ring-emerald-500/60">
+                  {isOnboarded ? 'Save changes' : 'Complete onboarding'}
+                </button>
+              </form>
+              <div className="mt-4 text-[11px] text-gray-500 flex flex-wrap items-center gap-2">
+                <a href="/me" className="underline underline-offset-4 hover:no-underline">Back to dashboard</a>
+                <span className="hidden sm:inline">•</span>
+                <span>Claimables live in <span className="font-medium">Now</span> and <span className="font-medium">Me → Wallet</span>.</span>
+              </div>
             </div>
-          )}
         </div>
-      </section>
 
-      {/* Username form (inlined) */}
-      <section className="mx-auto w-full max-w-xl px-5 pt-5 pb-[calc(env(safe-area-inset-bottom,0px)+24px)]">
-        <div className="rounded-2xl border bg-white p-5 shadow-sm">
-          <h2 className="text-lg sm:text-xl font-semibold mb-1">
-            {isOnboarded ? "Edit your profile" : "Let’s get you set up"}
-          </h2>
-          <p className="text-sm text-gray-600 mb-4">
-            Add your username. You can change this anytime.
-          </p>
-
-          <form action={saveProfileAction} className="space-y-4" noValidate>
-            <div>
-              <label className="block text-sm text-gray-600">Username</label>
-              <input
-                name="username"
-                defaultValue={profile?.username ?? ""}
-                className="mt-1 w-full rounded border px-3 py-2"
-                placeholder="beachfan123"
-                required
-              />
-            </div>
-
-            <button className="rounded-lg bg-black px-4 py-2 font-medium text-white">
-              {isOnboarded ? "Save changes" : "Complete onboarding"}
-            </button>
-          </form>
-
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
-            <a href="/me" className="text-gray-700 underline underline-offset-4 hover:no-underline">
-              Back to dashboard
-            </a>
-            <span className="text-gray-500">
-              Claimables live in <span className="font-medium">Now</span> and{" "}
-              <span className="font-medium">Me → Wallet</span>.
-            </span>
-          </div>
+        {/* Completion helper */}
+        <div className="rounded-xl border bg-white/70 backdrop-blur-sm p-4 text-xs text-gray-600 flex items-center gap-3">
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 font-semibold">✓</span>
+          <p className="leading-snug">Finish both steps to unlock your <span className="font-medium">Profile Complete</span> bonus and start earning daily points.</p>
         </div>
-      </section>
+      </div>
     </main>
   );
 }
