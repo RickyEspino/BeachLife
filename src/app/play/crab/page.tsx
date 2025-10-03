@@ -51,6 +51,18 @@ export default function Page() {
   const [shakeKey, setShakeKey] = useState<number>(0);
   const [flash, setFlash] = useState<boolean>(false);
   const [celebrate, setCelebrate] = useState<boolean>(false);
+  // Screen shake (separate from pop animation key)
+  const [shakeMag, setShakeMag] = useState<number>(0); // pixels (max amplitude)
+  const shakeUntilRef = useRef<number>(0);
+
+  // Imperative shake trigger
+  const triggerShake = useCallback((magnitude: number, durationMs: number) => {
+    if (reducedMotion) return; // respect reduced motion
+    const now = performance.now();
+    // Keep the strongest magnitude for overlap windows
+    if (magnitude > shakeMag) setShakeMag(magnitude);
+    if (now + durationMs > shakeUntilRef.current) shakeUntilRef.current = now + durationMs;
+  }, [shakeMag, reducedMotion]);
   // Particles
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const particlesRef = useRef<Particle[]>([]);
@@ -276,6 +288,22 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
+  // Shake animation loop (separate so it persists across state small changes)
+  const shakeAnimRef = useRef<number>(0);
+  useEffect(() => {
+    const run = () => {
+      const now = performance.now();
+      if (now >= shakeUntilRef.current) {
+        if (shakeMag !== 0) setShakeMag(0);
+      } else {
+        // keep animating until deadline
+      }
+      shakeAnimRef.current = requestAnimationFrame(run);
+    };
+    shakeAnimRef.current = requestAnimationFrame(run);
+    return () => cancelAnimationFrame(shakeAnimRef.current);
+  }, [shakeMag]);
+
   // Screen pulse at low HP thresholds
   useEffect(() => {
     if (state !== "BATTLE") return;
@@ -333,7 +361,7 @@ export default function Page() {
     // Ignore if already done
     if (hp <= 0 || timeLeft <= 0) return;
 
-  const isCrit = Math.random() < CRIT_CHANCE;
+    const isCrit = Math.random() < CRIT_CHANCE;
     const dmg = isCrit ? CRIT_DAMAGE : TAP_DAMAGE;
 
     setTaps((t) => t + 1);
@@ -342,6 +370,10 @@ export default function Page() {
     setHp((prev) => {
       const next = Math.max(0, prev - dmg);
       if (!reducedMotion) setShakeKey((k) => k + 1);
+      // tap-level shake (low amplitude)
+      if (!reducedMotion) {
+        if (isCrit) triggerShake(7, 200); else triggerShake(4, 140);
+      }
 
       if (next === 0) {
         setState("RESULT");
@@ -349,6 +381,7 @@ export default function Page() {
         setCelebrate(true);
         vibrate([30, 60, 30]);
         sfx("win");
+        if (!reducedMotion) triggerShake(14, 480);
         setTimeout(() => setCelebrate(false), 900);
       } else {
         sfx(isCrit ? "crit" : "tap");
@@ -377,7 +410,7 @@ export default function Page() {
       const ny = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
       spawnParticles(nx, ny, isCrit);
     }
-  }, [state, hp, timeLeft, reducedMotion, vibrate, ensureAudio, sfx, spawnParticles]);
+  }, [state, hp, timeLeft, reducedMotion, vibrate, ensureAudio, sfx, spawnParticles, triggerShake]);
 
   // SVG ring math
   const circumference = 2 * Math.PI * 140; // r = 140 (bigger ring)
@@ -454,6 +487,7 @@ export default function Page() {
           <div
             className={`relative rounded-[28px] p-4 sm:p-6 shadow-2xl ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-md 
             bg-white/70 dark:bg-white/5 ${flash ? "animate-[pulse_0.14s_ease]" : ""}`}
+            style={shakeMag ? { transform: `translate(${(Math.random()*2-1)*shakeMag}px, ${(Math.random()*2-1)*shakeMag}px)` } : undefined}
           >
             {/* Glow border */}
             <div className="pointer-events-none absolute inset-0 rounded-[28px] border border-transparent [mask:linear-gradient(#000,transparent)]">
