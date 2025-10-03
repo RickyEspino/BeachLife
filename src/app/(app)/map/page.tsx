@@ -1,6 +1,5 @@
 import { type MerchantPin } from '@/components/Map';
 import { createSupabaseServerClient } from '@/lib/supabase/serverClient';
-import MapCategoryOverlay from '@/components/MapCategoryOverlay';
 import ClientLiveMap from './ClientLiveMap';
 
 export const revalidate = 120; // refresh merchant pins every 2 minutes
@@ -68,8 +67,8 @@ export default async function Page({ searchParams }: { searchParams?: Record<str
         focusId={focus}
         userAvatarUrl={userAvatarUrl}
         currentUserId={currentUserId}
+        categories={categories}
       />
-      <MapCategoryOverlay categories={categories} merchants={merchants} />
     </section>
   );
 }

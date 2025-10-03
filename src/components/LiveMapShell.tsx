@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import MapComponent, { type MerchantPin, type MerchantPromo } from '@/components/Map';
+import MapCategoryOverlay from '@/components/MapCategoryOverlay';
 
 type SharedUser = { id: string; username: string; avatarUrl?: string | null; latitude: number; longitude: number; updatedAt?: string };
 
@@ -12,9 +13,10 @@ interface Props {
   userAvatarUrl?: string;
   currentUserId?: string;
   pollIntervalMs?: number; // default 60s
+  categories?: string[];
 }
 
-export default function LiveMapShell({ merchants, loadError, initialView, focusId, userAvatarUrl, currentUserId, pollIntervalMs = 60_000 }: Props) {
+export default function LiveMapShell({ merchants, loadError, initialView, focusId, userAvatarUrl, currentUserId, pollIntervalMs = 60_000, categories = [] }: Props) {
   const [sharedUsers, setSharedUsers] = useState<SharedUser[]>([]);
   const [lastFetched, setLastFetched] = useState<number | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -67,10 +69,12 @@ export default function LiveMapShell({ merchants, loadError, initialView, focusI
     };
   }, [pollIntervalMs, fetchLive]);
 
+  const [selectedCategories, setSelectedCategories] = useState<string[] | null>(null);
+
   return (
     <>
       <MapComponent
-        merchants={merchants}
+        merchants={selectedCategories && selectedCategories.length > 0 ? merchants.filter(m => selectedCategories.includes(m.category || '')) : merchants}
         loadError={loadError || fetchError || undefined}
         initialView={initialView}
         focusId={focusId}
@@ -79,7 +83,15 @@ export default function LiveMapShell({ merchants, loadError, initialView, focusI
         sharedUsers={sharedUsers}
         serverPromos={promos}
       />
-      {/* Tiny status badge for debug (could be removed later) */}
+      <MapCategoryOverlay
+        categories={categories}
+        merchants={merchants}
+        onSelectCategories={(cats: string[] | null) => setSelectedCategories(cats)}
+        onSelectMerchant={(id: string) => {
+          const el = document.querySelector(`[data-merchant-id="${CSS.escape(id)}"] button`) as HTMLButtonElement | null;
+          el?.click();
+        }}
+      />
       <div className="pointer-events-none absolute left-2 bottom-2 text-[10px] text-gray-500 bg-white/70 rounded px-1 py-0.5">
         {lastFetched ? `users:${sharedUsers.length} promos:${promos.length}` : 'loading...'}
       </div>

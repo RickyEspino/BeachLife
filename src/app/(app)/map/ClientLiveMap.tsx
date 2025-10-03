@@ -11,6 +11,7 @@ interface Props {
   focusId?: string;
   userAvatarUrl?: string;
   currentUserId?: string;
+  categories?: string[];
 }
 
 export default function ClientLiveMap(props: Props) {

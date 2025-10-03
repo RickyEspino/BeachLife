@@ -13,11 +13,10 @@ type Part = keyof typeof BASE_DAMAGE;
 export const dynamic = "force-static";
 
 export default function Page() {
-  // 🔹 Paste your FULL SVG strings below (no placeholders)
+  // ===== SVG STRINGS (your full SVGs) =====
   const BG = useMemo(
     () =>
       `
-<!-- PASTE FULL BACKGROUND SVG HERE -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 288">
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
@@ -50,7 +49,6 @@ export default function Page() {
   const CRAB = useMemo(
     () =>
       `
-<!-- PASTE FULL CRAB SVG HERE -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
     <style>
@@ -133,23 +131,29 @@ export default function Page() {
     []
   );
 
+  // ===== REFS =====
   const stageRef = useRef<HTMLDivElement>(null);
   const bgRef = useRef<HTMLDivElement>(null);
   const crabRef = useRef<HTMLDivElement>(null);
+  const thunderRef = useRef<HTMLAudioElement>(null);
 
+  // ===== STATE =====
   const [bossHp, setBossHp] = useState(BOSS_MAX);
   const [playerHp, setPlayerHp] = useState(PLAYER_MAX);
   const [blocked, setBlocked] = useState(false);
   const [blockCd, setBlockCd] = useState(false);
-  // refs to avoid stale closures in RAF & event handlers
+  const [strikeOn, setStrikeOn] = useState(false);
+
+  // refs to avoid stale closures
   const bossHpRef = useRef(bossHp);
   const playerHpRef = useRef(playerHp);
   const blockedRef = useRef(blocked);
   const blockCdRef = useRef(blockCd);
   const blockTimer = useRef<number | null>(null);
   const cooldownTimer = useRef<number | null>(null);
+  const strikeTimer = useRef<number | null>(null);
 
-  // Mount SVGs once (no nth-of-type brittleness)
+  // Mount SVGs once and apply sinister style overrides
   useEffect(() => {
     if (bgRef.current) {
       bgRef.current.innerHTML = BG.replace(
@@ -159,16 +163,41 @@ export default function Page() {
     }
     if (crabRef.current) {
       crabRef.current.innerHTML = CRAB;
+
+      const svg = crabRef.current.querySelector("svg") as SVGSVGElement | null;
+      if (svg) {
+        // Bigger SVG rendering
+        svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        svg.style.width = "100%";
+        svg.style.height = "auto";
+        svg.style.maxWidth = "none";
+        svg.style.overflow = "visible";
+
+        // Sinister palette
+        svg.style.setProperty("--crab-base", "#7b1510");
+        svg.style.setProperty("--crab-dark", "#3a0a07");
+        svg.style.setProperty("--crab-light", "#a52a1f");
+        svg.style.setProperty("--eye", "#c10000");
+        svg.style.setProperty("--glow", "#ff2b2b");
+
+        // Sharper strokes, extra pop on claws
+        const override = document.createElement("style");
+        override.textContent = `
+          .stroke { stroke-width: 7.5 !important; stroke-linejoin: miter !important; stroke-linecap: square !important; }
+          #claws .stroke, #claws path { filter: drop-shadow(0 0 6px rgba(255,0,0,.3)); }
+        `;
+        svg.prepend(override);
+      }
     }
   }, [BG, CRAB]);
 
-  // keep refs synced
+  // keep refs in sync
   useEffect(() => { bossHpRef.current = bossHp; }, [bossHp]);
   useEffect(() => { playerHpRef.current = playerHp; }, [playerHp]);
   useEffect(() => { blockedRef.current = blocked; }, [blocked]);
   useEffect(() => { blockCdRef.current = blockCd; }, [blockCd]);
 
-  // Timer-as-health (drains unless blocked or game over) - stable effect
+  // Timer-as-health drain
   useEffect(() => {
     let raf = 0;
     let last = performance.now();
@@ -176,12 +205,39 @@ export default function Page() {
       const dt = (t - last) / 1000;
       last = t;
       if (!blockedRef.current && bossHpRef.current > 0 && playerHpRef.current > 0) {
-        setPlayerHp(hp => Math.max(0, hp - TIMER_DRAIN_PER_SEC * dt));
+        setPlayerHp((hp) => Math.max(0, hp - TIMER_DRAIN_PER_SEC * dt));
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
+  }, []);
+
+  // Lightning scheduler (6–14s), with audio
+  useEffect(() => {
+    let alive = true;
+    const schedule = () => {
+      const delay = 6000 + Math.random() * 8000;
+      strikeTimer.current = window.setTimeout(() => {
+        if (!alive) return;
+        setStrikeOn(true);
+        // play thunder
+        const a = thunderRef.current;
+        if (a) {
+          try {
+            if (a.currentTime) a.currentTime = 0;
+            void a.play();
+          } catch {}
+        }
+        window.setTimeout(() => setStrikeOn(false), 520);
+        schedule();
+      }, delay);
+    };
+    schedule();
+    return () => {
+      alive = false;
+      if (strikeTimer.current) clearTimeout(strikeTimer.current);
+    };
   }, []);
 
   const flash = useCallback((id: Part) => {
@@ -194,7 +250,7 @@ export default function Page() {
 
   const handleDamage = useCallback((part: Exclude<Part, "claws">) => {
     if (bossHpRef.current <= 0 || playerHpRef.current <= 0) return;
-    setBossHp(h => Math.max(0, h - BASE_DAMAGE[part]));
+    setBossHp((h) => Math.max(0, h - BASE_DAMAGE[part]));
     flash(part);
   }, [flash]);
 
@@ -218,16 +274,16 @@ export default function Page() {
     setBlockCd(false);
   }, []);
 
-  // Attach hit handlers (stable)
+  // Attach hit handlers
   useEffect(() => {
     const svg = crabRef.current?.querySelector("svg");
     if (!svg) return;
     const parts: Part[] = ["crown", "eyes", "body", "claws", "legs"];
     const handlers: Array<{ el: Element; fn: (e: Event) => void }> = [];
-    parts.forEach(p => {
+    parts.forEach((p) => {
       const el = svg.querySelector(`#${p}`);
       if (!el) return;
-      const fn = () => p === "claws" ? handleBlock() : handleDamage(p as Exclude<Part, "claws">);
+      const fn = () => (p === "claws" ? handleBlock() : handleDamage(p as Exclude<Part, "claws">));
       el.addEventListener("pointerdown", fn);
       handlers.push({ el, fn });
       (el as HTMLElement).style.touchAction = "manipulation";
@@ -245,22 +301,23 @@ export default function Page() {
         <div
           id="kingcrab-stage"
           ref={stageRef}
-          className="relative bg-black select-none ring-1 ring-white/10 overflow-hidden w-screen h-[100svh] md:w-full md:max-w-5xl md:h-auto md:aspect-[16/9] rounded-none md:rounded-2xl"
+          className={`relative bg-black select-none ring-1 ring-white/10 overflow-hidden
+                      w-screen h-[100svh] md:w-full md:max-w-5xl md:h-auto md:aspect-[16/9]
+                      rounded-none md:rounded-2xl ${strikeOn ? "strike" : ""}`}
         >
           {/* Background */}
           <div ref={bgRef} id="bg" className="absolute inset-0" />
 
-          {/* Mist overlay (optional animated) */}
+          {/* Mist overlay */}
           <div className="mist pointer-events-none absolute inset-0" />
 
-          {/* Boss Crab */}
+          {/* Boss Crab (HUGE) */}
           <div className="absolute inset-0 grid place-items-center">
-            <div
-              ref={crabRef}
-              id="crab"
-              className="w-[62%] max-w-[780px]"
-            />
+            <div ref={crabRef} id="crab" className="w-[120%] max-w-none translate-y-[2%]" />
           </div>
+
+          {/* ⚡ Lightning overlay */}
+          <div className={`lightning pointer-events-none absolute inset-0 ${strikeOn ? "on" : ""}`} />
 
           {/* TOP: Boss HP */}
           <div className="absolute top-4 left-0 right-0 px-4 flex items-center justify-between">
@@ -330,6 +387,9 @@ export default function Page() {
               </div>
             </button>
           )}
+
+          {/* Thunder audio (optional) */}
+          <audio ref={thunderRef} preload="auto" src="/sfx/thunder.mp3" />
         </div>
       </div>
 
@@ -346,7 +406,7 @@ export default function Page() {
           animation: kc-pulse 1.2s ease-in-out infinite;
           will-change: filter;
         }
-        @keyframes kc-pulse { 0%,100% { filter: none; } 50% { filter: drop-shadow(0 0 6px #ff4d3d); } }
+        @keyframes kc-pulse { 0%,100% { filter: none; } 50% { filter: drop-shadow(0 0 6px #ff2b2b); } }
 
         /* Background animation */
         #bg svg ellipse {
@@ -390,6 +450,32 @@ export default function Page() {
         #crab svg g.kc-hit rect {
           filter: drop-shadow(0 0 10px rgba(255,77,61,.85));
         }
+
+        /* ⚡ Lightning overlay */
+        .lightning {
+          opacity: 0;
+          background:
+            radial-gradient(120% 80% at 50% 20%, rgba(255,255,255,0.22), rgba(255,255,255,0) 60%),
+            linear-gradient(to bottom, rgba(255,255,255,0.12), rgba(255,255,255,0) 40%),
+            radial-gradient(200% 100% at 50% 100%, rgba(255,255,255,0.08), rgba(255,255,255,0) 60%);
+          mix-blend-mode: screen;
+        }
+        .lightning.on { animation: bolt 520ms ease-out both; }
+        @keyframes bolt {
+          0%   { opacity: 0; }
+          5%   { opacity: 1; }   /* first flash */
+          18%  { opacity: 0.12; }
+          30%  { opacity: 0.85;} /* second flash */
+          60%  { opacity: 0.0; }
+          100% { opacity: 0; }
+        }
+
+        /* Scene reaction during lightning */
+        .strike #bg svg { filter: brightness(1.25) contrast(1.1); }
+        .strike #crab svg {
+          filter: brightness(1.15) saturate(1.1) drop-shadow(0 0 18px rgba(255,255,255,0.25));
+        }
+        .strike #crab svg #eyes { filter: drop-shadow(0 0 12px #ff2b2b); }
       `}</style>
     </main>
   );
