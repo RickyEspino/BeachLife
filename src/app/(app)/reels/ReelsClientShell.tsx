@@ -29,15 +29,16 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
     <div className="relative h-[100dvh] w-full bg-black overflow-hidden">
       <ReelsFeed initial={initial} initialNextCursor={initialNextCursor} />
 
-      {/* Floating Action Button */}
+      {/* Floating Action Button (styled like BottomTabs pill) */}
       <button
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Create Reel"
-        className="group fixed bottom-24 right-4 z-40 h-14 w-14 rounded-full bg-emerald-600 text-white shadow-xl shadow-emerald-600/30 flex items-center justify-center active:scale-95 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-400"
+        className="group fixed bottom-24 right-4 z-40 h-14 w-14 rounded-full bg-white/80 supports-[backdrop-filter]:bg-white/60 backdrop-blur-md border border-white/60 shadow-lg flex items-center justify-center active:scale-95 transition focus:outline-none focus:ring-2 focus:ring-blue-500/70 text-gray-800 hover:text-gray-900"
       >
-        <span className="text-3xl leading-none -mt-[2px]">＋</span>
-        <span className="pointer-events-none absolute -bottom-5 text-[10px] font-medium tracking-wide text-white/90 opacity-0 group-hover:opacity-100 transition">Create</span>
+        <span className="text-[26px] leading-none -mt-px">＋</span>
+        <span className="pointer-events-none absolute -bottom-5 text-[10px] font-medium tracking-wide text-gray-200 opacity-0 group-hover:opacity-100 transition select-none">Create</span>
+        <span className="absolute inset-0 rounded-full ring-1 ring-inset ring-white/70" aria-hidden="true" />
       </button>
 
       {/* Slide-over Panel */}

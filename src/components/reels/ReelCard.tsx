@@ -36,41 +36,43 @@ export default function ReelCard({ item, onToggleLike }: Props) {
         onLoadingComplete={() => setLoaded(true)}
       />
       {!loaded && <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-gray-800 to-gray-700" />}
-      {/* Top gradient for readability */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/60 to-transparent" />
-      {/* Bottom overlay */}
-      <div className="absolute inset-x-0 bottom-0 z-10 p-4 pb-[calc(1.25rem+var(--safe-bottom,0px))] flex flex-col gap-3">
-        <div className="flex items-center gap-3">
+      {/* Top gradient + overlay container */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/70 via-black/30 to-transparent" />
+      <div className="absolute left-0 right-0 top-0 z-10 flex items-start justify-between px-3 pt-4">
+        <div className="flex max-w-[70%] items-center gap-3 rounded-full bg-black/40 backdrop-blur-md px-3 py-2 border border-white/20 shadow">
           {item.avatarUrl ? (
-            <Image src={item.avatarUrl} alt={item.username} width={44} height={44} className="h-11 w-11 rounded-full object-cover ring-2 ring-white/70" />
+            <Image src={item.avatarUrl} alt={item.username} width={40} height={40} className="h-10 w-10 rounded-full object-cover ring-2 ring-white/60" />
           ) : (
-            <div className="h-11 w-11 rounded-full bg-white/20 backdrop-blur grid place-items-center text-white font-semibold text-sm ring-2 ring-white/30">
+            <div className="h-10 w-10 rounded-full bg-white/15 backdrop-blur grid place-items-center text-white font-semibold text-sm ring-2 ring-white/30">
               {item.username?.[0]?.toUpperCase() || '?'}
             </div>
           )}
           <div className="flex flex-col">
-            <span className="text-white font-semibold text-sm">@{item.username}</span>
+            <span className="text-white font-semibold leading-tight text-sm">@{item.username}</span>
             <time className="text-[10px] uppercase tracking-wide text-white/70" dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleDateString(undefined,{ month:'short', day:'numeric'})}</time>
           </div>
         </div>
-        {item.caption && (
-          <p className="text-sm leading-snug text-white/95 whitespace-pre-wrap break-words max-w-[85%]">
+        <div className="flex flex-col items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onToggleLike?.(item.id, liked)}
+            aria-label={liked ? 'Unlike' : 'Like'}
+            className={`group relative h-12 w-12 rounded-full flex items-center justify-center transition active:scale-90 border ${liked ? 'bg-rose-600 border-rose-400/50' : 'bg-black/40 backdrop-blur border-white/25'} shadow`}
+          >
+            <span className={`text-xl drop-shadow ${liked ? 'text-white' : 'text-white/90 group-hover:scale-110 transition-transform'}`}>{liked ? '❤️' : '🤍'}</span>
+            <span className="absolute -bottom-4 text-[10px] font-medium text-white tabular-nums">{likeCount}</span>
+          </button>
+        </div>
+      </div>
+      {/* Caption lower-left (keep readable, above bottom nav) */}
+      {item.caption && (
+        <div className="absolute left-3 bottom-24 z-10 max-w-[70%]">
+          <p className="text-sm leading-snug text-white/95 whitespace-pre-wrap break-words drop-shadow-md">
             {item.caption}
           </p>
-        )}
-      </div>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
-      <div className="absolute right-3 bottom-28 flex flex-col items-center gap-4">
-        <button
-          type="button"
-          onClick={() => onToggleLike?.(item.id, liked)}
-          aria-label={liked ? 'Unlike' : 'Like'}
-          className={`group relative h-14 w-14 rounded-full flex items-center justify-center transition active:scale-90 ${liked ? 'bg-rose-600' : 'bg-white/20 backdrop-blur'} border border-white/20`}
-        >
-          <span className={`text-2xl drop-shadow ${liked ? 'text-white' : 'text-white/90 group-hover:scale-110 transition-transform'}`}>{liked ? '❤️' : '🤍'}</span>
-          <span className="absolute -bottom-5 text-[11px] font-medium text-white tabular-nums">{likeCount}</span>
-        </button>
-      </div>
+        </div>
+      )}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
     </article>
   );
 }

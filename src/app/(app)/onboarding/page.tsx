@@ -43,10 +43,22 @@ export default async function OnboardingPage({ searchParams }: Props) {
     } = await supabase.auth.getUser();
     if (!user) redirect("/login");
 
-    const usernameRaw = String(formData.get("username") ?? "").trim();
-    const username = usernameRaw.replace(/\s+/g, "_").slice(0, 40);
+    const raw = String(formData.get("username") ?? "");
+    const cleaned = raw.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 40);
 
-    if (!username) {
+    if (cleaned.length < 3) {
+      revalidatePath("/(app)/onboarding");
+      return;
+    }
+
+    // Check uniqueness (case-insensitive)
+    const { data: existing } = await supabase
+      .from("profiles")
+      .select("id")
+      .ilike("username", cleaned)
+      .neq("id", user.id)
+      .maybeSingle();
+    if (existing) {
       revalidatePath("/(app)/onboarding");
       return;
     }
@@ -55,7 +67,7 @@ export default async function OnboardingPage({ searchParams }: Props) {
       .from("profiles")
       .upsert({
         id: user.id,
-        username,
+        username: cleaned,
         onboarded: true,
         updated_at: new Date().toISOString(),
       });
@@ -81,11 +93,13 @@ export default async function OnboardingPage({ searchParams }: Props) {
     revalidatePath('/(app)/me');
   }
 
+  // NOTE: For simplicity, server action returns void on validation failure (silent). A future enhancement can adopt useFormState for inline error messaging.
+
   return (
     <main className="min-h-[100dvh] bg-gradient-to-br from-sand-50 via-white to-sand-100/70">
       <div className="mx-auto w-full max-w-3xl px-5 pt-[calc(env(safe-area-inset-top,0px)+28px)] pb-[calc(env(safe-area-inset-bottom,0px)+40px)] space-y-8">
         {/* Header / branding */}
-        <header className="flex flex-col gap-4">
+        <header className="flex flex-col gap-4" aria-label="Onboarding progress">
           <div className="flex items-center gap-3">
             <div className="h-11 w-11 rounded-xl bg-black text-white grid place-items-center font-semibold shadow-sm">BL</div>
             <div>
@@ -94,19 +108,22 @@ export default async function OnboardingPage({ searchParams }: Props) {
             </div>
           </div>
           {/* Simple progress indicator */}
-          <div className="flex items-center gap-3 text-xs font-medium text-gray-600">
-            <div className="flex items-center gap-1">
-              <span className={`h-2 w-2 rounded-full ${hasAvatar ? 'bg-emerald-500' : 'bg-gray-300'}`} /> Avatar
-            </div>
-            <span className="text-gray-300">•</span>
-            <div className="flex items-center gap-1">
-              <span className={`h-2 w-2 rounded-full ${profile?.username ? 'bg-emerald-500' : 'bg-gray-300'}`} /> Username
-            </div>
-            <span className="text-gray-300">•</span>
-            <div className="flex items-center gap-1">
-              <span className={`h-2 w-2 rounded-full ${(hasAvatar && profile?.username) ? 'bg-emerald-500' : 'bg-gray-300'}`} /> Complete
-            </div>
-          </div>
+          <ol className="flex items-center gap-3 text-xs font-medium text-gray-600" role="list">
+            <li className="flex items-center gap-1" aria-current={hasAvatar ? undefined : 'step'}>
+              <span className={`h-2 w-2 rounded-full ${hasAvatar ? 'bg-emerald-500' : 'bg-gray-300'}`} aria-hidden />
+              <span>Avatar</span>
+            </li>
+            <span className="text-gray-300" aria-hidden>•</span>
+            <li className="flex items-center gap-1" aria-current={!profile?.username ? 'step' : undefined}>
+              <span className={`h-2 w-2 rounded-full ${profile?.username ? 'bg-emerald-500' : 'bg-gray-300'}`} aria-hidden />
+              <span>Username</span>
+            </li>
+            <span className="text-gray-300" aria-hidden>•</span>
+            <li className="flex items-center gap-1" aria-current={(hasAvatar && profile?.username) ? 'step' : undefined}>
+              <span className={`h-2 w-2 rounded-full ${(hasAvatar && profile?.username) ? 'bg-emerald-500' : 'bg-gray-300'}`} aria-hidden />
+              <span>Complete</span>
+            </li>
+          </ol>
         </header>
 
         <div className="grid gap-6 md:grid-cols-2">
@@ -143,8 +160,9 @@ export default async function OnboardingPage({ searchParams }: Props) {
               </div>
               <form action={saveProfileAction} className="space-y-4 mt-auto" noValidate>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600">Username</label>
+                  <label className="block text-xs font-medium text-gray-600" htmlFor="username">Username <span className="text-gray-400 font-normal">(3–40 chars, letters / numbers / _)</span></label>
                   <input
+                    id="username"
                     name="username"
                     defaultValue={profile?.username ?? ''}
                     className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/60 focus:border-emerald-500"
