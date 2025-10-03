@@ -1,6 +1,5 @@
 // src/app/(app)/now/page.tsx
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
-import { Claimables } from "@/components/Claimables";
 import { RotatingBeachHeader } from "@/components/RotatingBeachHeader";
 import { computeBeachScore } from "@/lib/now/beachScore";
 import { buildWeatherAdvice } from "@/lib/now/weatherAdvice";
@@ -220,9 +219,47 @@ export default async function NowPage() {
         </div>
 
                 {/* Other “Now” content can go here… */}
-        <section className="rounded-xl border p-4 space-y-1">
-          <h2 className="font-semibold">Today’s beach highlights</h2>
-          <p className="text-sm text-gray-600">Events, surf, and extended forecast.</p>
+        <section className="rounded-xl border p-4 space-y-3 bg-white/70 backdrop-blur-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold tracking-tight">Today’s beach highlights</h2>
+              <p className="text-sm text-gray-600">Quick wins & current conditions.</p>
+            </div>
+          </div>
+
+          {/* Goals / actions row */}
+          {(canClaimDaily || canClaimProfileComplete) && (
+            <div className="flex flex-col sm:flex-row gap-3">
+              {canClaimDaily && (
+                <form action={claimDailyAction} className="group flex-1">
+                  <button type="submit" className="w-full h-full text-left rounded-lg border bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm hover:shadow transition focus:outline-none focus:ring-2 focus:ring-emerald-500/50">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white text-xs font-semibold shadow">+500</span>
+                      <div className="flex-1">
+                        <div className="font-medium text-emerald-700">Daily check-in</div>
+                        <p className="text-xs text-emerald-800/80">Tap to claim today’s boost.</p>
+                      </div>
+                      <span className="text-emerald-600 text-sm font-medium group-hover:translate-x-0.5 transition">→</span>
+                    </div>
+                  </button>
+                </form>
+              )}
+              {canClaimProfileComplete && (
+                <form action={claimProfileCompleteAction} className="group flex-1">
+                  <button type="submit" className="w-full h-full text-left rounded-lg border bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm hover:shadow transition focus:outline-none focus:ring-2 focus:ring-blue-500/50">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white text-xs font-semibold shadow">+100</span>
+                      <div className="flex-1">
+                        <div className="font-medium text-blue-700">Complete profile</div>
+                        <p className="text-xs text-blue-800/80">Username + avatar bonus.</p>
+                      </div>
+                      <span className="text-blue-600 text-sm font-medium group-hover:translate-x-0.5 transition">→</span>
+                    </div>
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
         </section>
 
         {weather && beachScore && (
@@ -251,15 +288,7 @@ export default async function NowPage() {
 
         <EventsList events={todaysEvents} showUpcoming={true} />
 
-        {/* Compact claimables: only render when there's an action to take */}
-        <Claimables
-          compact
-          canClaimDaily={canClaimDaily}
-          canClaimProfileComplete={canClaimProfileComplete}
-          hasAvatar={hasAvatar}
-          claimDailyAction={claimDailyAction}
-          claimProfileCompleteAction={claimProfileCompleteAction}
-        />
+        {/* Removed old compact claimables (moved to highlights section) */}
 
 
       </div>
