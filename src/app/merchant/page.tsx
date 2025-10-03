@@ -1,6 +1,7 @@
 // src/app/merchant/page.tsx
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
+import DoublePointsToggle from './toggle-double-points';
 
 // Force dynamic rendering; avoid build-time prerender attempts that need runtime env/cookies
 export const dynamic = 'force-dynamic';
@@ -67,6 +68,7 @@ export default async function MerchantDashboardPage() {
             >
               Register purchase
             </a>
+            <DoublePointsToggle merchantId={merchant.id} />
           </div>
         </div>
 

@@ -84,6 +84,41 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
   // Special event: ephemeral King Crab spawn near user (client-side prototype)
   const [crabEvent, setCrabEvent] = useState<null | { latitude: number; longitude: number; expiresAt: number }>(null);
   const [crabCountdown, setCrabCountdown] = useState<number>(0);
+  // Double points merchant IDs (client-only)
+  const [doubleIds, setDoubleIds] = useState<string[]>([]);
+  const [showDoubleOnly, setShowDoubleOnly] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const KEY = 'DOUBLE_POINTS_MERCHANTS';
+    const read = () => {
+      try {
+        const raw = localStorage.getItem(KEY);
+        if (!raw) return [] as string[];
+        const parsed = JSON.parse(raw);
+        const now = Date.now();
+        if (Array.isArray(parsed) && parsed.every(x => x && typeof x.id === 'string' && typeof x.expiresAt === 'number')) {
+          return parsed.filter(p => p.expiresAt > now).map(p => p.id);
+        }
+        if (Array.isArray(parsed) && parsed.every(x => typeof x === 'string')) {
+          return parsed as string[]; // legacy, no expiry
+        }
+      } catch {}
+      return [] as string[];
+    };
+    setDoubleIds(read());
+    const onStorage = (e: StorageEvent) => { if (e.key === KEY) setDoubleIds(read()); };
+    const onCustom = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { merchantIds?: string[] } | undefined;
+      if (detail?.merchantIds) setDoubleIds(detail.merchantIds);
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('merchant:double-points-change', onCustom as EventListener);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('merchant:double-points-change', onCustom as EventListener);
+    };
+  }, []);
   // One-shot geolocation (no UI control) — attempts once when showUserLocation is true.
   useEffect(() => {
     if (!showUserLocation) return;
@@ -265,15 +300,22 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
           if (c.count === 1) {
             const p = c.points[0];
             if (p.type === 'merchant') {
+              if (showDoubleOnly && !doubleIds.includes(p.id)) return null;
+              const is2x = doubleIds.includes(p.id);
               return (
                 <Marker key={p.id} longitude={p.longitude} latitude={p.latitude} anchor="bottom">
-                  <button
-                    aria-label={`Merchant: ${p.name}`}
-                    className="text-xl drop-shadow-sm"
-                    onClick={e => { e.preventDefault(); setSelected({ id: p.id, name: p.name, latitude: p.latitude, longitude: p.longitude, category: p.category }); }}
-                  >
-                    🏪
-                  </button>
+                  <div className="relative">
+                    <button
+                      aria-label={`Merchant: ${p.name}${is2x ? ' (2x Points active)' : ''}`}
+                      className="text-xl drop-shadow-sm"
+                      onClick={e => { e.preventDefault(); setSelected({ id: p.id, name: p.name, latitude: p.latitude, longitude: p.longitude, category: p.category }); }}
+                    >
+                      🏪
+                    </button>
+                    {is2x && (
+                      <span className="absolute -top-3 -right-3 rounded-full bg-amber-500 text-[10px] font-bold text-white px-1.5 py-0.5 shadow ring-1 ring-black/10 select-none animate-pulse" title="2× Points Active">2×</span>
+                    )}
+                  </div>
                 </Marker>
               );
             } else {
@@ -388,6 +430,15 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
             <span className="pointer-events-none absolute -bottom-5 text-[10px] font-medium tracking-wide text-gray-600 opacity-0 group-hover:opacity-100 transition">Locate</span>
           </button>
         )}
+
+        {/* Filter toggle for 2x merchants */}
+        <button
+          type="button"
+          onClick={() => setShowDoubleOnly(v => !v)}
+          className={`absolute left-4 bottom-[calc(180px+var(--safe-bottom))] rounded-full px-4 py-2 text-xs font-semibold shadow border backdrop-blur transition ${showDoubleOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-white/90 hover:bg-white text-gray-700'}`}
+        >
+          {showDoubleOnly ? 'Showing 2× Only' : 'Show 2× Only'}
+        </button>
 
         {/* Custom user avatar marker at user position (single fetch, no continuous tracking) */}
         {showUserLocation && userPos && userAvatarUrl && (
