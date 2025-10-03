@@ -37,7 +37,8 @@ export default async function MePage() {
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!profile || !profile.username) redirect("/onboarding");
+  // Allow access even if username missing; onboarding not forced anymore.
+  if (!profile) redirect("/login");
 
   // Total points (via view, fallback to sum)
   let totalPoints = 0;

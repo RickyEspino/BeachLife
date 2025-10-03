@@ -106,7 +106,7 @@ export default function MeDashboard(props: {
 
           <div className="flex-1 min-w-0">
             <p className="text-white/80 text-sm">Welcome back</p>
-            <h3 className="text-xl font-semibold truncate">{username}</h3>
+            <h3 className="text-xl font-semibold truncate">{username || 'Set a username'}</h3>
             <p className="text-white/90">Level {level}</p>
           </div>
 

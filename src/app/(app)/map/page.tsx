@@ -1,6 +1,7 @@
-import MapComponent, { type MerchantPin } from '@/components/Map';
+import { type MerchantPin } from '@/components/Map';
 import { createSupabaseServerClient } from '@/lib/supabase/serverClient';
 import MapCategoryOverlay from '@/components/MapCategoryOverlay';
+import ClientLiveMap from './ClientLiveMap';
 
 export const revalidate = 120; // refresh merchant pins every 2 minutes
 
@@ -51,27 +52,14 @@ export default async function Page({ searchParams }: { searchParams?: Record<str
   // Derive unique categories (simple capitalization)
   const categories = Array.from(new Set(merchants.map(m => m.category).filter(Boolean))) as string[];
 
-  // Fetch shared users (server-side). Rely on policy to filter only shared.
-  let sharedUsers: Array<{ id: string; username: string; avatarUrl?: string | null; latitude: number; longitude: number; updatedAt?: string }> = [];
-  try {
-    const sharedRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/shared-users?maxAgeMinutes=180&limit=250`, { cache: 'no-store' });
-    if (sharedRes.ok) {
-      sharedUsers = await sharedRes.json();
-    }
-  } catch {
-    // swallow network errors
-  }
-
   return (
     <section className="h-full relative">
-      <MapComponent
+      <ClientLiveMap
         merchants={merchants}
         loadError={error?.message}
         initialView={initialView}
         focusId={focus}
-        showUserLocation
         userAvatarUrl={userAvatarUrl}
-        sharedUsers={sharedUsers}
       />
       <MapCategoryOverlay categories={categories} />
     </section>

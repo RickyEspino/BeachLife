@@ -50,10 +50,9 @@ export async function middleware(req: NextRequest) {
     });
   }
 
-  // Force onboarding unless we’re already on allowed pages
-  if (!bypass && (!profile || !profile.username)) {
-    return NextResponse.redirect(new URL("/onboarding", req.url));
-  }
+  // Previously: forced redirect to /onboarding when username missing.
+  // Removed per updated UX preference; pages can show inline completion prompts instead.
+  // if (!bypass && (!profile || !profile.username)) { /* redirect removed */ }
 
   return res;
 }
