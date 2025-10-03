@@ -1,932 +1,335 @@
 "use client";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import NextImage from "next/image";
 
-/**
- * King Crab: Tap Battle (30s) — with Sound Toggle + SFX
- * Paste to: src/app/play/crab/page.tsx
- * TailwindCSS required. No external images.
- *
- * States: READY → BATTLE → RESULT
- */
+import { useEffect, useMemo, useRef, useState } from "react";
 
-type BattleState = "READY" | "BATTLE" | "RESULT";
+// ───────────────────────────────────────────────────────────────────────────────
+// TUNABLES
+// ───────────────────────────────────────────────────────────────────────────────
+const BOSS_MAX = 100;
+const PLAYER_MAX = 100;                       // timer total
+const TIMER_DRAIN_PER_SEC = 12;               // player HP lost per second
+const BLOCK_DURATION_MS = 1200;               // how long the block pauses timer
+const BLOCK_COOLDOWN_MS = 900;                // after block ends, brief cooldown
+const BASE_DAMAGE = { crown: 18, eyes: 14, body: 10, claws: 0, legs: 6 } as const;
 
-// Legacy: historical battle target length (30s) kept for tuning reference.
-// Removed unused constant to satisfy lint.
-const STARTING_HP = 100; // crab HP
-const PLAYER_STARTING_HP = 100; // player HP
-const PLAYER_DRAIN_PER_SEC = PLAYER_STARTING_HP / 30; // drains fully in ~30s if no win
-const TAP_DAMAGE = 1;
-const CRIT_DAMAGE = 5;
-const CRIT_CHANCE = 0.10; // 10%
-const MAX_TAPS_PER_100MS_BUCKET = 12; // anti-macro burst
-const MAX_TAPS_PER_SECOND = 20; // soft cap
+type Part = keyof typeof BASE_DAMAGE;
 
-// Power Ups
-type PowerUpKey = 'slow' | 'double' | 'shield';
-interface ActivePowerUp { key: PowerUpKey; expiresAt: number; }
-const POWER_UP_DURATIONS: Record<PowerUpKey, number> = {
-  slow: 6000,      // 6s slower drain
-  double: 6000,    // 6s double taps score weighting (here: extra damage tick on crit)
-  shield: 1        // shield is single-use flag (expiresAt ignored after consumption)
-};
+// ───────────────────────────────────────────────────────────────────────────────
 
-// Power-up & FX groundwork (extensible)
-// (Future power-ups will hook into these structures.)
-
-type Particle = {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  maxLife: number;
-  size: number;
-  color: string;
-};
+export const dynamic = "force-static";
 
 export default function Page() {
-  const [state, setState] = useState<BattleState>("READY");
-  const [hp, setHp] = useState<number>(STARTING_HP); // crab HP
-  const [playerHp, setPlayerHp] = useState<number>(PLAYER_STARTING_HP); // player HP (drains over time)
-  const [taps, setTaps] = useState<number>(0);
-  const [crits, setCrits] = useState<number>(0);
-  const [reducedMotion, setReducedMotion] = useState<boolean>(false);
-  const [soundOn, setSoundOn] = useState<boolean>(true);
-  const [win, setWin] = useState<boolean | null>(null);
-  // Power-up state
-  const [powerUps, setPowerUps] = useState<ActivePowerUp[]>([]);
-  const hasPowerUp = useCallback((k: PowerUpKey) => powerUps.some(p => p.key === k && (p.key === 'shield' ? true : p.expiresAt > performance.now())), [powerUps]);
-  const addPowerUp = useCallback((k: PowerUpKey) => {
-    setPowerUps(prev => {
-      const now = performance.now();
-      if (k === 'shield') {
-        // single shield active at a time
-        if (prev.some(p => p.key === 'shield')) return prev;
-        return [...prev, { key: 'shield', expiresAt: now + 60_000 }]; // long expiry (functionally until used)
-      }
-      const expiresAt = now + POWER_UP_DURATIONS[k];
-      // refresh if already present
-      return [...prev.filter(p => p.key !== k), { key: k, expiresAt }];
-    });
-  }, []);
-  const consumeShield = useCallback(() => {
-    setPowerUps(prev => prev.filter(p => p.key !== 'shield'));
-  }, []);
-  // Periodic cleanup of expired (non-shield) powerups
-  useEffect(() => {
-    if (!powerUps.length) return;
-    const id = setInterval(() => {
-      const now = performance.now();
-      setPowerUps(prev => prev.filter(p => p.key === 'shield' || p.expiresAt > now));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [powerUps.length]);
-
-  // Anti-cheat buckets
-  const bucket100Ref = useRef<{ key: number; count: number }>({ key: 0, count: 0 });
-  const perSecRef = useRef<{ key: number; count: number }>({ key: 0, count: 0 });
-
-  // Anim state
-  const [shakeKey, setShakeKey] = useState<number>(0);
-  const [flash, setFlash] = useState<boolean>(false);
-  const [celebrate, setCelebrate] = useState<boolean>(false);
-  const [damageFlash, setDamageFlash] = useState<boolean>(false); // red flash when player takes damage
-  // Screen shake (separate from pop animation key)
-  const [shakeMag, setShakeMag] = useState<number>(0); // pixels (max amplitude)
-  const shakeUntilRef = useRef<number>(0);
-
-  // Imperative shake trigger
-  const triggerShake = useCallback((magnitude: number, durationMs: number) => {
-    if (reducedMotion) return; // respect reduced motion
-    const now = performance.now();
-    // Keep the strongest magnitude for overlap windows
-    if (magnitude > shakeMag) setShakeMag(magnitude);
-    if (now + durationMs > shakeUntilRef.current) shakeUntilRef.current = now + durationMs;
-  }, [shakeMag, reducedMotion]);
-  // Particles
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const particlesRef = useRef<Particle[]>([]);
-  const particleRafRef = useRef<number>(0);
-  const crabButtonRef = useRef<HTMLButtonElement | null>(null);
-
-  // Spawn a particle burst at a normalized (0-1) position within the crab button
-  const spawnParticles = useCallback((nx: number, ny: number, crit: boolean) => {
-    const arr = particlesRef.current;
-    const count = crit ? 42 : 24;
-    for (let i = 0; i < count; i++) {
-      const angle = (Math.random() * Math.PI * 2);
-      const speed = crit ? 140 + Math.random() * 160 : 90 + Math.random() * 110; // px/s
-      const vx = Math.cos(angle) * speed;
-      const vy = Math.sin(angle) * speed;
-      const maxLife = 400 + Math.random() * 300; // ms
-      const size = crit ? 5 + Math.random() * 6 : 4 + Math.random() * 4;
-      const hues = crit ? [30, 40, 45, 50] : [18, 20, 24, 28];
-      const hue = hues[Math.floor(Math.random() * hues.length)];
-      const sat = crit ? 95 : 92;
-      const light = crit ? 60 + Math.random() * 15 : 55 + Math.random() * 10;
-      arr.push({
-        x: nx,
-        y: ny,
-        vx,
-        vy,
-        life: 0,
-        maxLife,
-        size,
-        color: `hsl(${hue} ${sat}% ${light}%)`
-      });
-    }
-  }, []);
-
-  // Particle animation loop
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let last = performance.now();
-    const run = () => {
-      const now = performance.now();
-      const dt = now - last; // ms
-      last = now;
-
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w * window.devicePixelRatio;
-        canvas.height = h * window.devicePixelRatio;
-        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-      }
-
-      ctx.clearRect(0, 0, w, h);
-      const arr = particlesRef.current;
-      for (let i = arr.length - 1; i >= 0; i--) {
-        const p = arr[i];
-        p.life += dt;
-        const t = p.life / p.maxLife; // 0..1
-        if (t >= 1) { arr.splice(i, 1); continue; }
-        // simple motion
-        p.x += (p.vx * dt) / 1000 / w; // convert px/s to normalized
-        p.y += (p.vy * dt) / 1000 / h;
-        // fade & scale
-        const alpha = t < 0.7 ? 1 - t * 0.6 : Math.max(0, 1 - (t - 0.7) / 0.3);
-        const size = p.size * (1 - t * 0.35);
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x * w, p.y * h, size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      particleRafRef.current = requestAnimationFrame(run);
-    };
-    particleRafRef.current = requestAnimationFrame(run);
-    return () => cancelAnimationFrame(particleRafRef.current);
-  }, []);
-
-  // Web Audio
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  // (Removed timer ring progress; using HP bars now)
-
-  // Reduced motion preference
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReducedMotion(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
-    mq.addEventListener?.("change", onChange);
-    return () => mq.removeEventListener?.("change", onChange);
-  }, []);
-
-  // Ensure/resume AudioContext on user gesture
-  const ensureAudio = useCallback(async () => {
-    if (!soundOn) return;
-    if (typeof window === "undefined") return;
-    if (!audioCtxRef.current) {
-      const _win = window as typeof window & { webkitAudioContext?: typeof AudioContext };
-      const Ctx = window.AudioContext || _win.webkitAudioContext;
-      if (Ctx) {
-        audioCtxRef.current = new Ctx();
-      }
-    }
-    if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
-      try {
-        await audioCtxRef.current.resume();
-      } catch {}
-    }
-  }, [soundOn]);
-
-  // Play tiny procedural SFX
-  const sfx = useCallback(
-  (type: "tap" | "crit" | "tick" | "win" | "lose" | "alert") => {
-      if (!soundOn) return;
-      const ctx = audioCtxRef.current;
-      if (!ctx) return;
-
-      const now = ctx.currentTime;
-
-      const make = (freq: number, dur = 0.06, type: OscillatorType = "sine", gain = 0.12) => {
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.type = type;
-        o.frequency.setValueAtTime(freq, now);
-        g.gain.setValueAtTime(0, now);
-        g.gain.linearRampToValueAtTime(gain, now + 0.005);
-        g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-        o.connect(g).connect(ctx.destination);
-        o.start(now);
-        o.stop(now + dur + 0.01);
-      };
-
-      switch (type) {
-        case "tap": {
-          // Soft, quick pop (downward sweep)
-          make(520, 0.05, "sine", 0.10);
-          make(200, 0.05, "triangle", 0.06);
-          break;
-        }
-        case "crit": {
-          // Brighter blip + short double
-          make(880, 0.06, "triangle", 0.14);
-          setTimeout(() => make(660, 0.05, "sine", 0.08), 30);
-          break;
-        }
-        case "tick": {
-          // Subtle tick each second
-          make(320, 0.035, "square", 0.06);
-          break;
-        }
-        case "win": {
-          // Tiny ascending arpeggio
-          make(523.25, 0.09, "sine", 0.12); // C5
-          setTimeout(() => make(659.25, 0.09, "sine", 0.12), 110); // E5
-          setTimeout(() => make(783.99, 0.12, "sine", 0.12), 220); // G5
-          break;
-        }
-        case "lose": {
-          // Short downward wah
-          make(240, 0.12, "sawtooth", 0.10);
-          break;
-        }
-        case "alert": {
-          // Pulsing low HP alert: two quick beeps
-          make(440, 0.08, "sine", 0.13);
-          setTimeout(() => make(392, 0.10, "triangle", 0.11), 110);
-          break;
-        }
-      }
-    },
-    [soundOn]
+  // ===== SVGs (exactly your assets) =====
+  const BG = useMemo(
+    () => `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 288">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#111418"/>
+      <stop offset="100%" stop-color="#2c3235"/>
+    </linearGradient>
+    <linearGradient id="ocean" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a2c34"/>
+      <stop offset="100%" stop-color="#0c181c"/>
+    </linearGradient>
+    <linearGradient id="shore" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#332e29"/>
+      <stop offset="100%" stop-color="#1a1815"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="160" fill="url(#sky)" />
+  <ellipse cx="180" cy="60" rx="120" ry="40" fill="#20262b" opacity="0.5"/>
+  <ellipse cx="340" cy="50" rx="150" ry="60" fill="#1a1f22" opacity="0.6"/>
+  <ellipse cx="260" cy="90" rx="180" ry="50" fill="#252a2f" opacity="0.4"/>
+  <rect y="160" width="512" height="80" fill="url(#ocean)" />
+  <path d="M0,200 Q40,180 80,200 T160,200 T240,200 T320,200 T400,200 T480,200 T560,200 V240 H0 Z" fill="#0f2026"/>
+  <path d="M0,190 Q60,210 120,190 T240,190 T360,190 T480,190 T600,190 V240 H0 Z" fill="#123039" opacity="0.8"/>
+  <path d="M0,210 Q50,230 100,210 T200,210 T300,210 T400,210 T500,210 T600,210 V240 H0 Z" fill="#0d1c21" opacity="0.6"/>
+  <rect y="240" width="512" height="48" fill="url(#shore)" />
+</svg>`.trim(),
+    []
   );
 
-  const vibrate = useCallback((pattern: number | number[]) => {
-    if (typeof window === "undefined") return;
-    const nav = navigator as Navigator & { vibrate?: (p: number | number[]) => boolean };
-    if (typeof nav.vibrate === 'function') {
-      try { nav.vibrate(pattern); } catch { /* noop */ }
-    }
-  }, []);
-
-  // Player HP drain loop
-  useEffect(() => {
-    if (state !== "BATTLE") return;
-    let raf = 0;
-    let prev = performance.now();
-    const loop = () => {
-      const now = performance.now();
-      const dt = (now - prev) / 1000; // seconds
-      prev = now;
-
-      setPlayerHp((prevHp) => {
-        if (prevHp <= 0 || hp <= 0) return prevHp;
-        const slowFactor = hasPowerUp('slow') ? 0.4 : 1; // slower drain
-        const next = Math.max(0, prevHp - PLAYER_DRAIN_PER_SEC * dt * slowFactor);
-        if (next === 0 && hp > 0) {
-          if (hasPowerUp('shield')) {
-            consumeShield();
-            return Math.max(prevHp, PLAYER_STARTING_HP * 0.25); // restore some HP instead of losing
-          } else {
-            setState("RESULT");
-            setWin(false);
-            vibrate(20);
-            sfx("lose");
-          }
-        }
-        return next;
-      });
-      if (hp > 0 && state === "BATTLE") {
-        raf = requestAnimationFrame(loop);
+  const CRAB = useMemo(
+    () => `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <style>
+      :root {
+        --crab-base: #C73A29;
+        --crab-dark: #7A1F16;
+        --crab-light: #E55644;
+        --crown: #E2B300;
+        --crown-dark: #A47800;
+        --eye: #111111;
+        --glow: #FF4D3D;
+        --outline: #1A0E0C;
       }
+      .base { fill: var(--crab-base); }
+      .dark { fill: var(--crab-dark); }
+      .light { fill: var(--crab-light); }
+      .crown { fill: var(--crown); }
+      .crown-dark { fill: var(--crown-dark); }
+      .eye { fill: var(--eye); }
+      .glow { fill: var(--glow); }
+      .stroke { stroke: var(--outline); stroke-width: 6; stroke-linejoin: round; stroke-linecap: round; }
+      .no-stroke { stroke: none; }
+      .shadow { opacity: .18; }
+    </style>
+    <filter id="innerGlow">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
+      <feComposite in="blur" in2="SourceAlpha" operator="arithmetic" k2="-1" k3="2" result="inner"/>
+      <feColorMatrix type="matrix"
+        values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" />
+    </filter>
+  </defs>
+
+  <ellipse cx="256" cy="450" rx="170" ry="28" class="shadow no-stroke"/>
+
+  <g id="body" style="cursor:crosshair">
+    <path class="base stroke" d="M96,250c0,-70 82,-120 160,-120s160,50 160,120c0,45 -35,85 -80,102l-18,7c-20,8 -42,12 -62,12s-42,-4 -62,-12l-18,-7c-45,-17 -80,-57 -80,-102z"/>
+    <path class="dark stroke" d="M128,230l-26,-22 34,-10 18,-30 32,18 40,-34 40,34 32,-18 18,30 34,10 -26,22" />
+    <path class="dark stroke" d="M156,290c24,-26 60,-38 100,-38s76,12 100,38c-14,34 -58,62 -100,62s-86,-28 -100,-62z"/>
+    <path class="light no-stroke" opacity=".2" d="M120,256c0,-56 72,-98 136,-98 44,0 104,16 134,56 -40,-46 -110,-68 -170,-52 -66,18 -100,62 -100,94z"/>
+  </g>
+
+  <g id="eyes" style="cursor:crosshair">
+    <g id="leftEye">
+      <ellipse class="eye stroke" cx="196" cy="290" rx="20" ry="24"/>
+      <circle class="glow no-stroke" cx="196" cy="298" r="10" filter="url(#innerGlow)"/>
+      <circle fill="#FFFFFF" cx="204" cy="282" r="5"/>
+    </g>
+    <g id="rightEye">
+      <ellipse class="eye stroke" cx="316" cy="290" rx="20" ry="24"/>
+      <circle class="glow no-stroke" cx="316" cy="298" r="10" filter="url(#innerGlow)"/>
+      <circle fill="#FFFFFF" cx="324" cy="282" r="5"/>
+    </g>
+    <path class="eye stroke" d="M214,330c28,-10 56,-10 84,0"/>
+  </g>
+
+  <g id="claws" style="cursor:crosshair">
+    <path class="dark stroke" d="M96,308c-28,-4 -56,10 -66,32 28,10 64,0 88,-20" />
+    <path class="base stroke" d="M92,320c-30,30 -40,62 -16,78 18,12 54,-8 82,-42 12,-14 22,-30 28,-46 -30,-12 -64,-10 -94,10z"/>
+    <path class="base stroke" d="M160,300c-20,18 -20,46 -6,62 18,-10 36,-30 48,-50 -10,-16 26,-20 42,-12z"/>
+    <path class="dark stroke" d="M148,362c10,8 28,8 40,-2 4,-18 -8,-30 -22,-30 -12,0 -20,12 -18,32z"/>
+    <path class="dark stroke" d="M416,308c28,-4 56,10 66,32 -28,10 -64,0 -88,-20" />
+    <path class="base stroke" d="M420,320c30,30 40,62 16,78 -18,12 -54,-8 -82,-42 -12,-14 -22,-30 -28,-46 30,-12 64,-10 94,10z"/>
+    <path class="base stroke" d="M352,300c20,18 20,46 6,62 -18,-10 -36,-30 -48,-50 10,-16 26,-20 42,-12z"/>
+    <path class="dark stroke" d="M364,362c-10,8 -28,8 -40,-2 -4,-18 8,-30 22,-30 12,0 20,12 18,32z"/>
+  </g>
+
+  <g id="legs" style="cursor:crosshair">
+    <path class="dark stroke" d="M136,356l-30,40"/>
+    <path class="dark stroke" d="M184,364l-16,48"/>
+    <path class="dark stroke" d="M328,364l16,48"/>
+    <path class="dark stroke" d="M376,356l30,40"/>
+  </g>
+
+  <g id="crown" transform="translate(0,-6)" style="cursor:crosshair">
+    <path class="crown stroke" d="M202,194l-22,60h152l-22,-60 -32,26 -22,-36 -22,36 -32,-26z"/>
+    <rect x="170" y="254" width="172" height="28" rx="8" class="crown-dark stroke"/>
+  </g>
+</svg>
+`.trim(),
+    []
+  );
+
+  // ===== State =====
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [bossHp, setBossHp] = useState(BOSS_MAX);
+  const [playerHp, setPlayerHp] = useState(PLAYER_MAX);
+  const [blocked, setBlocked] = useState(false);
+  const [blockCd, setBlockCd] = useState(false);
+  const blockTimer = useRef<number | null>(null);
+  const cooldownTimer = useRef<number | null>(null);
+
+  // drain player HP over time (timer) unless blocked or dead/won
+  useEffect(() => {
+    let raf: number;
+    let last = performance.now();
+
+    const tick = (t: number) => {
+      const dt = (t - last) / 1000; // seconds
+      last = t;
+      const gameOver = bossHp <= 0 || playerHp <= 0;
+      if (!blocked && !gameOver) {
+        setPlayerHp((hp) => Math.max(0, hp - TIMER_DRAIN_PER_SEC * dt));
+      }
+      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(loop);
+    raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [state, hp, vibrate, sfx, hasPowerUp, consumeShield]);
+  }, [blocked, bossHp, playerHp]);
 
-  // Shake animation loop (separate so it persists across state small changes)
-  const shakeAnimRef = useRef<number>(0);
+  // click handlers bound to SVG parts
   useEffect(() => {
-    const run = () => {
-      const now = performance.now();
-      if (now >= shakeUntilRef.current) {
-        if (shakeMag !== 0) setShakeMag(0);
-      } else {
-        // keep animating until deadline
-      }
-      shakeAnimRef.current = requestAnimationFrame(run);
-    };
-    shakeAnimRef.current = requestAnimationFrame(run);
-    return () => cancelAnimationFrame(shakeAnimRef.current);
-  }, [shakeMag]);
+    const stage = stageRef.current;
+    if (!stage) return;
+    const crab = stage.querySelector("svg:nth-of-type(2)");
+    if (!crab) return;
 
-  // Screen pulse at low HP thresholds
-  useEffect(() => {
-    if (state !== "BATTLE") return;
-    if (hp === Math.floor(STARTING_HP * 0.25) || hp === Math.floor(STARTING_HP * 0.1)) {
-      setFlash(true);
-      const t = setTimeout(() => setFlash(false), 140);
-      return () => clearTimeout(t);
-    }
-  }, [hp, state]);
+    const parts: Part[] = ["crown", "eyes", "body", "claws", "legs"];
+  const handlers: Array<{ el: Element; fn: (ev: Event) => void }> = [];
 
-  const reset = useCallback(() => {
-  setHp(STARTING_HP);
-  setPlayerHp(PLAYER_STARTING_HP);
-    setTaps(0);
-    setCrits(0);
-    setWin(null);
-    setCelebrate(false);
-    setState("READY");
-  }, []);
-
-  const start = useCallback(async () => {
-    await ensureAudio(); // prime/resume audio on user action
-    // Try fullscreen (graceful fail) for immersion
-    const el: HTMLElement | null = document.documentElement;
-    const reqFs = (el as HTMLElement & { requestFullscreen?: () => Promise<void> }).requestFullscreen;
-    if (el && typeof reqFs === 'function') {
-      try { await reqFs.call(el); } catch { /* ignore */ }
-    }
-  setHp(STARTING_HP);
-  setPlayerHp(PLAYER_STARTING_HP);
-    setTaps(0);
-    setCrits(0);
-    setWin(null);
-    setCelebrate(false);
-    setState("BATTLE");
-  }, [ensureAudio]);
-
-  const onTap = useCallback(async (ev?: React.PointerEvent | React.MouseEvent | React.TouchEvent) => {
-    if (state !== "BATTLE") return;
-    await ensureAudio();
-
-    const now = performance.now();
-    // 100ms bucket
-    const bucketKey = Math.floor(now / 100);
-    if (bucket100Ref.current.key !== bucketKey) {
-      bucket100Ref.current.key = bucketKey;
-      bucket100Ref.current.count = 0;
-    }
-    bucket100Ref.current.count++;
-    if (bucket100Ref.current.count > MAX_TAPS_PER_100MS_BUCKET) return;
-
-    // per-second bucket
-    const secKey = Math.floor(now / 1000);
-    if (perSecRef.current.key !== secKey) {
-      perSecRef.current.key = secKey;
-      perSecRef.current.count = 0;
-    }
-    perSecRef.current.count++;
-    if (perSecRef.current.count > MAX_TAPS_PER_SECOND) return;
-
-    // Ignore if already done
-  if (hp <= 0 || playerHp <= 0) return;
-
-    const isCrit = Math.random() < CRIT_CHANCE;
-    let dmg = isCrit ? CRIT_DAMAGE : TAP_DAMAGE;
-    if (hasPowerUp('double')) {
-      dmg *= isCrit ? 1.8 : 1.4; // scale damage modestly
-    }
-
-    setTaps((t) => t + 1);
-    if (isCrit) setCrits((c) => c + 1);
-
-    setHp((prev) => {
-      const next = Math.max(0, prev - dmg);
-      if (!reducedMotion) setShakeKey((k) => k + 1);
-      // tap-level shake (low amplitude)
-      if (!reducedMotion) {
-        if (isCrit) triggerShake(7, 200); else triggerShake(4, 140);
-      }
-
-      if (next === 0) {
-        setState("RESULT");
-        setWin(true);
-        setCelebrate(true);
-        vibrate([30, 60, 30]);
-        sfx("win");
-        if (!reducedMotion) triggerShake(14, 480);
-        setTimeout(() => setCelebrate(false), 900);
-      } else {
-        sfx(isCrit ? "crit" : "tap");
-        if (!reducedMotion) vibrate(isCrit ? [8, 12, 8] : 8);
-      }
-      return next;
+    parts.forEach((p) => {
+      const el = crab.querySelector(`#${p}`);
+      if (!el) return;
+      const fn = (ev: Event) => {
+        const part = p;
+        if (part === "claws") handleBlock();
+        else handleDamage(part);
+      };
+      el.addEventListener("pointerdown", fn);
+      handlers.push({ el, fn });
+      (el as HTMLElement).style.touchAction = "manipulation";
     });
 
-    // Particle origin (normalized inside crab button)
-    if (crabButtonRef.current) {
-      const rect = crabButtonRef.current.getBoundingClientRect();
-      let clientX: number | undefined; let clientY: number | undefined;
-      // Try multiple event coordinate sources
-      if (ev) {
-        // @ts-expect-error unify touch
-        const t = ev.touches?.[0];
-        if (t) { clientX = t.clientX; clientY = t.clientY; }
-        // @ts-expect-error pointer/mouse
-        if (ev.clientX != null) { clientX = ev.clientX; clientY = ev.clientY; }
-      }
-      if (clientX == null || clientY == null) {
-        clientX = rect.left + rect.width / 2;
-        clientY = rect.top + rect.height / 2;
-      }
-      const nx = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-      const ny = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
-      spawnParticles(nx, ny, isCrit);
-    }
-  }, [state, hp, playerHp, reducedMotion, vibrate, ensureAudio, sfx, spawnParticles, triggerShake, hasPowerUp]);
+    return () => handlers.forEach(({ el, fn }) => el.removeEventListener("pointerdown", fn));
+  }, []);
 
-  const lowHp = hp > 0 && hp <= STARTING_HP * 0.25;
-  const percent = (STARTING_HP - hp) / STARTING_HP;
-  const grade = hp <= 0 ? "S" : percent >= 0.75 ? "A" : percent >= 0.5 ? "B" : "C";
-  const crabHpPct = hp / STARTING_HP;
-  const playerHpPct = playerHp / PLAYER_STARTING_HP;
+  const handleDamage = (part: Exclude<Part, "claws">) => {
+    if (bossHp <= 0 || playerHp <= 0) return;
+    const dmg = BASE_DAMAGE[part];
+    setBossHp((h) => Math.max(0, h - dmg));
+    flash(part);
+  };
 
-  // Low HP sound cue (once per battle per entity)
-  const crabLowPlayedRef = useRef(false);
-  const playerLowPlayedRef = useRef(false);
-  useEffect(() => {
-    if (state !== 'BATTLE') {
-      crabLowPlayedRef.current = false;
-      playerLowPlayedRef.current = false;
-      return;
-    }
-    if (!crabLowPlayedRef.current && crabHpPct < 0.3 && hp > 0) {
-      sfx('alert');
-      crabLowPlayedRef.current = true;
-    }
-    if (!playerLowPlayedRef.current && playerHpPct < 0.3 && playerHp > 0) {
-      sfx('alert');
-      playerLowPlayedRef.current = true;
-    }
-  }, [state, crabHpPct, playerHpPct, hp, playerHp, sfx]);
+  const handleBlock = () => {
+    if (blockCd || blocked) return;
+    setBlocked(true);
+    flash("claws");
+    if (blockTimer.current) clearTimeout(blockTimer.current);
+    if (cooldownTimer.current) clearTimeout(cooldownTimer.current);
 
-  // Track player HP drops to trigger damage flash (rate-limited)
-  const lastDamageFlashRef = useRef<number>(0);
-  const prevPlayerHpRef = useRef<number>(playerHp);
-  useEffect(() => {
-    if (state === 'BATTLE' && playerHp < prevPlayerHpRef.current) {
-      const now = performance.now();
-      if (now - lastDamageFlashRef.current > 420) { // rate limit ~0.4s
-        lastDamageFlashRef.current = now;
-        setDamageFlash(true);
-        setTimeout(() => setDamageFlash(false), 160);
-      }
-    }
-    prevPlayerHpRef.current = playerHp;
-  }, [playerHp, state]);
+    blockTimer.current = window.setTimeout(() => {
+      setBlocked(false);
+      setBlockCd(true);
+      cooldownTimer.current = window.setTimeout(() => setBlockCd(false), BLOCK_COOLDOWN_MS);
+    }, BLOCK_DURATION_MS);
+  };
+
+  const flash = (id: Part) => {
+    const svg = stageRef.current?.querySelector("svg:nth-of-type(2)");
+    const g = svg?.querySelector(`#${id}`);
+    if (!g) return;
+    g.classList.add("kc-hit");
+    setTimeout(() => g.classList.remove("kc-hit"), 140);
+  };
+
+  const bossPct = (bossHp / BOSS_MAX) * 100;
+  const playerPct = (playerHp / PLAYER_MAX) * 100;
+  const gameOver = bossHp <= 0 || playerHp <= 0;
 
   return (
-    <main className="min-h-dvh w-full relative overflow-hidden bg-[radial-gradient(1200px_600px_at_70%_-10%,rgba(255,200,150,0.35),transparent),radial-gradient(800px_400px_at_10%_90%,rgba(56,189,248,0.25),transparent)] dark:bg-[radial-gradient(1200px_600px_at_70%_-10%,rgba(251,146,60,0.25),transparent),radial-gradient(800px_400px_at_10%_90%,rgba(59,130,246,0.2),transparent)]">
-      {/* Floating bubbles */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        {Array.from({ length: 12 }).map((_, i) => (
-          <span
-            key={i}
-            className="absolute -bottom-10 left-1/2 rounded-full opacity-30 animate-bubble"
-            style={{
-              width: 8 + ((i * 13) % 18),
-              height: 8 + ((i * 13) % 18),
-              transform: `translateX(${(i - 6) * 48}px)`,
-              animationDelay: `${(i % 6) * 0.6}s`,
-            }}
-          />
-        ))}
-      </div>
+    <main className="min-h-dvh grid place-items-center bg-black text-white">
+      <div
+        id="kingcrab-stage"
+        ref={stageRef}
+        className="relative w-full max-w-5xl aspect-[16/9] overflow-hidden rounded-2xl ring-1 ring-white/10 bg-black select-none"
+      >
+        {/* Background */}
+        <div
+          className="absolute inset-0"
+          dangerouslySetInnerHTML={{
+            __html: BG.replace('<svg ', '<svg preserveAspectRatio="xMidYMid slice" '),
+          }}
+        />
 
-      {/* Gentle waves at the bottom */}
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0">
-        <WaveSVG />
-      </div>
-
-      {/* Content container */}
-      <div className="relative z-10 flex min-h-dvh items-center justify-center p-4 sm:p-6">
-        <div className="w-full max-w-2xl">
-          {/* Header + Controls (hidden during battle for immersion) */}
-          {state !== "BATTLE" && (
-            <div className="mb-4 flex items-center justify-between">
-              <div className="text-center flex-1">
-                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight drop-shadow-sm">
-                  King Crab <span className="text-amber-500">Quick Battle</span>
-                </h1>
-                <p className="mt-1 text-xs sm:text-sm text-gray-700 dark:text-gray-300">
-                  Tap to defeat in <strong>30s</strong>. Crits deal extra damage. Good rhythm wins. 🦀
-                </p>
-              </div>
-              <button
-                aria-label={soundOn ? "Sound on" : "Sound off"}
-                onClick={async () => {
-                  if (!soundOn) {
-                    setSoundOn(true);
-                    await ensureAudio();
-                  } else {
-                    setSoundOn(false);
-                  }
-                }}
-                className={`ml-3 rounded-full p-2 ring-1 ring-black/5 dark:ring-white/10 shadow-sm 
-                ${soundOn ? "bg-emerald-500 text-white" : "bg-white/70 dark:bg-white/10 text-gray-700 dark:text-gray-200"}`}
-                title={soundOn ? "Sound on" : "Sound off"}
-              >
-                {soundOn ? "🔊" : "🔇"}
-              </button>
-            </div>
-          )}
-
-          {/* Status (hidden during battle; BATTLE shows inline bars instead) */}
-          {state !== 'BATTLE' && (
-            <div className="mb-4 grid grid-cols-3 gap-3">
-              <InfoPill label="Crab HP" value={hp.toString()} emphasize={lowHp} />
-              <InfoPill label="Player HP" value={Math.ceil(playerHp).toString()} />
-              <InfoPill label="Grade" value={grade} />
-            </div>
-          )}
-
-          {/* Arena */}
+        {/* Boss crab */}
+        <div className="absolute inset-0 grid place-items-center">
           <div
-            className={`relative rounded-[28px] p-2 sm:p-4 shadow-2xl ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-md 
-            bg-white/70 dark:bg-white/5 ${flash ? "animate-[pulse_0.14s_ease]" : ""} 
-            ${state === 'BATTLE' ? 'fixed inset-0 m-0 rounded-none z-20 flex items-center justify-center p-0 sm:p-0' : ''}`}
-            style={shakeMag ? { transform: `translate(${(Math.random()*2-1)*shakeMag}px, ${(Math.random()*2-1)*shakeMag}px)` } : undefined}
-          >
-            {/* Glow border */}
-            <div className="pointer-events-none absolute inset-0 rounded-[28px] border border-transparent [mask:linear-gradient(#000,transparent)]">
-              <div className="absolute inset-0 rounded-[28px] blur-xl opacity-60 bg-gradient-to-r from-amber-400/40 via-pink-400/30 to-sky-400/40" />
-            </div>
-
-            <div className={`relative mx-auto aspect-square ${state === 'BATTLE' ? 'w-[min(100vh,100vw)] max-w-none' : 'max-w-[520px]'}`}>
-              {/* (Removed inline HUD bars; repositioned to fixed top/bottom) */}
-
-              {/* Celebration burst */}
-              {celebrate && !reducedMotion && (
-                <div className="pointer-events-none absolute inset-0 grid place-items-center">
-                  <div className="size-40 rounded-full animate-burst bg-amber-400/30" />
-                </div>
-              )}
-
-              {/* Particle canvas (behind interactive content) */}
-              <canvas
-                ref={canvasRef}
-                className="absolute inset-8 sm:inset-10 rounded-full pointer-events-none"
-                aria-hidden
-              />
-
-              {/* Tap target */}
-              <button
-                ref={crabButtonRef}
-                onClick={onTap}
-                onPointerDown={onTap}
-                onTouchStart={(e) => onTap(e)}
-                aria-label="Tap the King Crab"
-                className={`absolute inset-8 sm:inset-10 rounded-full select-none focus:outline-none focus-visible:ring-4 focus-visible:ring-amber-400/60 ${
-                  state === "BATTLE" ? "cursor-pointer" : "cursor-default"
-                }`}
-                disabled={state !== "BATTLE"}
-              >
-                <div
-                  key={shakeKey}
-                  className={`size-full rounded-full grid place-items-center transition-transform ${
-                    reducedMotion ? "" : "animate-[pop_0.09s_ease]"
-                  }`}
-                  style={{
-                    background:
-                      "radial-gradient(ellipse at 50% 40%, rgba(255,255,255,0.75), rgba(255,200,150,0.28))",
-                  }}
-                >
-                  <CrabGraphic
-                    className="w-[70%] h-[70%] drop-shadow-[0_18px_30px_rgba(0,0,0,0.25)]"
-                    lowHp={lowHp}
-                  />
-                </div>
-              </button>
-            </div>
-
-            {/* Overlays */}
-            {state === "READY" && (
-              <Overlay>
-                <h2 className="text-xl sm:text-2xl font-extrabold mb-2">King Crab Challenge</h2>
-                <p className="text-sm sm:text-base text-gray-700 dark:text-gray-200 mb-4">
-                  Beat the timer. Land some crits. Claim the shell-glory.
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-3">
-                  <button
-                    onClick={start}
-                    className="px-5 py-2.5 rounded-full bg-amber-500 text-white font-semibold shadow hover:brightness-105 active:scale-[0.98]"
-                  >
-                    Tap to Begin
-                  </button>
-                  <div className="flex gap-1">
-                    <button onClick={() => addPowerUp('slow')} className="px-2 py-1 text-[10px] rounded bg-blue-500 text-white">Slow</button>
-                    <button onClick={() => addPowerUp('double')} className="px-2 py-1 text-[10px] rounded bg-fuchsia-500 text-white">Double</button>
-                    <button onClick={() => addPowerUp('shield')} className="px-2 py-1 text-[10px] rounded bg-emerald-600 text-white">Shield</button>
-                  </div>
-                  <label className="flex items-center gap-2 text-xs sm:text-sm text-gray-700 dark:text-gray-200">
-                    <input
-                      type="checkbox"
-                      checked={reducedMotion}
-                      onChange={(e) => setReducedMotion(e.target.checked)}
-                      className="accent-amber-500"
-                    />
-                    Reduced motion
-                  </label>
-                  <button
-                    onClick={async () => {
-                      setSoundOn((v) => !v);
-                      await ensureAudio();
-                    }}
-                    className={`px-3 py-1.5 rounded-full text-xs ring-1 ring-black/5 dark:ring-white/10 shadow-sm ${
-                      soundOn ? "bg-emerald-500 text-white" : "bg-white/80 dark:bg-white/10 text-gray-800 dark:text-gray-200"
-                    }`}
-                  >
-                    {soundOn ? "Sound: On" : "Sound: Off"}
-                  </button>
-                </div>
-              </Overlay>
-            )}
-
-            {state === "RESULT" && (
-              <Overlay>
-                <div className="mb-1">
-                  <span
-                    className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-bold ${
-                      win ? "bg-green-500/20 text-green-700 dark:text-green-300" : "bg-red-500/20 text-red-700 dark:text-red-300"
-                    }`}
-                  >
-                    {win ? "VICTORY" : "PINCHED"}
-                  </span>
-                </div>
-                <h2 className="text-2xl sm:text-3xl font-extrabold mb-2">
-                  {win ? "You cracked the crab!" : "So close… try a new rhythm"}
-                </h2>
-                <p className="text-sm sm:text-base text-gray-700 dark:text-gray-200 mb-5">
-                  Taps: {taps} · Crits: {crits} · Grade: {grade}
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-3">
-                  <button
-                    onClick={start}
-                    className="px-5 py-2.5 rounded-full bg-amber-500 text-white font-semibold shadow hover:brightness-105 active:scale-[0.98]"
-                  >
-                    Play Again
-                  </button>
-                  <button
-                    onClick={reset}
-                    className="px-5 py-2.5 rounded-full bg-white/80 dark:bg-white/10 border border-black/10 dark:border-white/10 text-gray-800 dark:text-gray-100 font-semibold shadow hover:brightness-105 active:scale-[0.98]"
-                  >
-                    Back
-                  </button>
-                </div>
-              </Overlay>
-            )}
-          </div>
-
-          {/* Footer note */}
-          <p className="mt-4 text-center text-xs sm:text-sm text-gray-600 dark:text-gray-300">
-            Rewards coming soon. This build tests timing, rhythm, and juice. 🫶
-          </p>
+            className="w-[62%] max-w-[780px]"
+            dangerouslySetInnerHTML={{ __html: CRAB }}
+          />
         </div>
+
+        {/* TOP: Boss HP */}
+        <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-2 w-56 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-red-500 transition-[width] duration-150"
+                style={{ width: `${bossPct}%` }}
+              />
+            </div>
+            <span className="text-xs uppercase tracking-wide opacity-80">King Crab</span>
+          </div>
+          <span className="text-xs font-mono opacity-75">
+            {Math.ceil(bossHp)}/{BOSS_MAX}
+          </span>
+        </div>
+
+        {/* BOTTOM: Player HP (timer) */}
+        <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-2 w-56 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-[width] duration-150 ${
+                  blocked ? "bg-emerald-400" : "bg-sky-400"
+                }`}
+                style={{ width: `${playerPct}%` }}
+              />
+            </div>
+            <span className="text-xs uppercase tracking-wide opacity-80">
+              {blocked ? "Blocking…" : "Stamina"}
+            </span>
+          </div>
+          <span className="text-xs font-mono opacity-75">
+            {Math.ceil(playerHp)}/{PLAYER_MAX}
+          </span>
+        </div>
+
+        {/* Block badge / cooldown */}
+        <div className="absolute bottom-12 right-4">
+          <div
+            className={`px-2 py-1 rounded text-xs font-semibold ${
+              blocked ? "bg-emerald-500/20 text-emerald-300" : blockCd ? "bg-yellow-500/10 text-yellow-300" : "bg-white/10 text-white/80"
+            }`}
+          >
+            {blocked ? "BLOCK ACTIVE" : blockCd ? "Cooldown…" : "Tap claws to BLOCK"}
+          </div>
+        </div>
+
+        {/* Result banner */}
+        {gameOver && (
+          <div className="absolute inset-0 grid place-items-center bg-black/40 backdrop-blur-[2px]">
+            <div className="px-6 py-4 rounded-xl bg-neutral-900/90 ring-1 ring-white/10">
+              <div className="text-xl font-bold text-center">
+                {bossHp <= 0 ? "You Win! 🦀" : "Defeated… 😵"}
+              </div>
+              <div className="text-xs opacity-75 mt-2 text-center">Tap to restart</div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Page-scoped styles */}
+      {/* Animations */}
       <style jsx global>{`
-        @keyframes pop { from { transform: translateZ(0) scale(1) } to { transform: translateZ(0) scale(1.02) } }
-        @keyframes bubble {
-          0%   { transform: translateY(0) translateX(var(--dx, 0px)); opacity: 0.0 }
-          10%  { opacity: 0.35 }
-          100% { transform: translateY(-110vh) translateX(calc(var(--dx, 0px) + 40px)); opacity: 0 }
+        /* Original idle motions */
+        #kingcrab-stage svg #claws {
+          transform-origin: 50% 70%;
+          animation: kc-flex 1.1s ease-in-out infinite;
         }
-        .animate-bubble {
-          background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.6), rgba(255,255,255,.15));
-          animation: bubble 10s linear infinite;
+        @keyframes kc-flex {
+          0%, 100% { transform: rotate(0deg); }
+          50% { transform: rotate(-3deg); }
         }
-        @keyframes burst {
-          0% { transform: scale(0.4); opacity: 0.0 }
-          60% { transform: scale(1.05); opacity: 0.8 }
-          100% { transform: scale(1.2); opacity: 0 }
+        #kingcrab-stage svg #eyes {
+          animation: kc-pulse 1.2s ease-in-out infinite;
         }
-        .animate-burst { animation: burst 0.9s ease forwards; }
-        @keyframes hpFlash { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
-        .hp-bar-critical { animation: hpFlash 0.7s linear infinite; }
-        @keyframes damageFlash { 0% { background: rgba(239,68,68,0); } 25% { background: rgba(239,68,68,0.35); } 100% { background: rgba(239,68,68,0); } }
-        .animate-damageFlash { animation: damageFlash 0.18s ease; }
-        /* Custom animations: You can paste your additional keyframes/classes for the crab game here. */
-        /* King Crab external SVG animations (targeting element IDs inside the SVG) */
-        .crab-svg-inline svg { width: 100%; height: 100%; display: block; }
-        .crab-svg-inline #claws { transform-origin: 50% 70%; animation: flex 1.1s ease-in-out infinite; }
-        @keyframes flex { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(-3deg); } }
-        .crab-svg-inline #eyes { animation: pulse 1.2s ease-in-out infinite; }
-        @keyframes pulse { 0%,100% { filter: none; } 50% { filter: drop-shadow(0 0 6px #ff4d3d); } }
-        /* Low HP: intensify animations */
-        .lowhp.crab-svg-inline #claws { animation: flex-urgent 0.7s ease-in-out infinite; }
-        @keyframes flex-urgent { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(-8deg); } }
-        .lowhp.crab-svg-inline #eyes { animation: pulse-urgent 0.7s ease-in-out infinite; }
-        @keyframes pulse-urgent { 0%,100% { filter: none; } 50% { filter: drop-shadow(0 0 10px #ff4d3d) drop-shadow(0 0 4px #ff9a8f); } }
-        /* Respect reduced motion */
-        @media (prefers-reduced-motion: reduce) {
-          .crab-svg-inline #claws, .crab-svg-inline #eyes,
-          .lowhp.crab-svg-inline #claws, .lowhp.crab-svg-inline #eyes { animation: none !important; }
+        @keyframes kc-pulse {
+          0%, 100% { filter: none; }
+          50% { filter: drop-shadow(0 0 6px #ff4d3d); }
+        }
+
+        /* Hit flash */
+        #kingcrab-stage svg .kc-hit,
+        #kingcrab-stage svg g.kc-hit path,
+        #kingcrab-stage svg g.kc-hit ellipse,
+        #kingcrab-stage svg g.kc-hit rect {
+          filter: drop-shadow(0 0 10px rgba(255,77,61,.85));
         }
       `}</style>
-
-      {/* Fixed HUD Bars (top/bottom) */}
-      {state === 'BATTLE' && (
-        <>
-          <div className="fixed top-2 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-40 select-none">
-            <BattleHpBar label="CRAB" pct={crabHpPct} />
-            {powerUps.length > 0 && (
-              <div className="flex gap-2 flex-wrap pt-2">
-                {powerUps.filter(p => p.key === 'shield' || p.expiresAt > performance.now()).map(p => {
-                  const remaining = p.key === 'shield' ? 0 : Math.ceil((p.expiresAt - performance.now()) / 1000);
-                  const label = p.key === 'slow' ? 'Slow' : p.key === 'double' ? 'Double' : 'Shield';
-                  const color = p.key === 'slow' ? 'bg-blue-500/80' : p.key === 'double' ? 'bg-fuchsia-500/80' : 'bg-emerald-600/80';
-                  return (
-                    <span key={p.key} className={`text-[10px] tracking-wide font-semibold px-2 py-1 rounded-full text-white backdrop-blur ${color}`}>
-                      {label}{p.key !== 'shield' && <span className="ml-1 opacity-80">{remaining}s</span>}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          <div className="fixed bottom-2 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-40 select-none">
-            <BattleHpBar label="YOU" pct={playerHpPct} />
-          </div>
-          {/* Damage flash overlay */}
-          <div className={`pointer-events-none fixed inset-0 z-30 ${damageFlash ? 'animate-damageFlash' : ''}`}></div>
-        </>
-      )}
     </main>
   );
-}
-
-/* ---------- Small components ---------- */
-
-function InfoPill({ label, value, emphasize }: { label: string; value: string; emphasize?: boolean }) {
-  return (
-    <div
-      className={`rounded-2xl px-3 py-2 text-center ring-1 ring-black/5 dark:ring-white/10 backdrop-blur 
-      ${emphasize ? "bg-red-50/80 dark:bg-red-900/20" : "bg-white/70 dark:bg-white/5"}`}
-    >
-      <div className="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-300">{label}</div>
-      <div className={`text-lg font-bold tabular-nums ${emphasize ? "text-red-600 dark:text-red-300" : ""}`}>{value}</div>
-    </div>
-  );
-}
-
-// Legacy HpBar kept for reference (unused now)
-// function HpBar(...) {}
-
-function BattleHpBar({ label, pct }: { label: string; pct: number }) {
-  const clamped = Math.max(0, Math.min(1, pct));
-  let color = 'bg-green-500';
-  let gradient = 'from-green-500 to-green-400';
-  if (clamped < 0.6 && clamped >= 0.3) {
-    color = 'bg-yellow-400';
-    gradient = 'from-yellow-400 to-yellow-300';
-  } else if (clamped < 0.3) {
-    color = 'bg-red-600';
-    gradient = 'from-red-600 to-red-500';
-  }
-  const critical = clamped < 0.3;
-  return (
-    <div className="w-full">
-      <div className="flex justify-between mb-1 text-[11px] font-semibold tracking-wide text-white drop-shadow">
-        <span>{label}</span>
-        <span>{Math.ceil(clamped * 100)}%</span>
-      </div>
-      <div className="h-4 w-full rounded-full bg-black/40 overflow-hidden ring-1 ring-white/10 backdrop-blur-sm">
-        <div
-          className={`h-full ${critical ? 'hp-bar-critical' : 'transition-[width] duration-150'} ${color} bg-gradient-to-r ${gradient}`}
-          style={{ width: `${clamped * 100}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function Overlay({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="absolute inset-0 rounded-[28px] bg-gradient-to-b from-white/85 to-white/55 dark:from-black/70 dark:to-black/50 backdrop-blur-md grid place-items-center text-center p-6">
-      <div className="max-w-md">{children}</div>
-    </div>
-  );
-}
-
-function WaveSVG() {
-  return (
-    <svg viewBox="0 0 1440 200" className="w-full h-[120px] sm:h-[160px]" aria-hidden>
-      <path
-        fill="url(#waveGrad)"
-        d="M0,160 C240,120 360,160 480,160 C600,160 720,120 840,120 C960,120 1200,160 1440,120 L1440,200 L0,200 Z"
-        opacity="0.5"
-      />
-      <defs>
-        <linearGradient id="waveGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#bae6fd" />
-          <stop offset="100%" stopColor="#fde68a" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
-
-function CrabSVG({ className, lowHp }: { className?: string; lowHp?: boolean }) {
-  // Inline SVG crab (no external assets)
-  const shell = lowHp ? "#ef4444" : "#f97316"; // red-500 vs orange-500
-  const claw = lowHp ? "#b91c1c" : "#c2410c";
-  const eye = "#111827";
-
-  return (
-    <svg viewBox="0 0 256 256" className={className} aria-hidden>
-      {/* Shadow */}
-      <ellipse cx="128" cy="200" rx="70" ry="16" fill="rgba(0,0,0,0.12)" />
-      {/* Body */}
-      <ellipse cx="128" cy="120" rx="70" ry="45" fill={shell} />
-      {/* Dots on shell */}
-      <circle cx="110" cy="110" r="4" fill="rgba(255,255,255,0.55)" />
-      <circle cx="146" cy="116" r="3" fill="rgba(255,255,255,0.55)" />
-      {/* Eyes */}
-      <g id="eyes">
-        <line x1="106" y1="84" x2="106" y2="100" stroke={eye} strokeWidth="4" />
-        <line x1="150" y1="84" x2="150" y2="100" stroke={eye} strokeWidth="4" />
-        <circle cx="106" cy="78" r="6" fill={eye} />
-        <circle cx="150" cy="78" r="6" fill={eye} />
-      </g>
-      {/* Legs */}
-      <path d="M60 140 l-24 8" stroke={claw} strokeWidth="8" strokeLinecap="round" />
-      <path d="M68 156 l-26 14" stroke={claw} strokeWidth="8" strokeLinecap="round" />
-      <path d="M196 140 l24 8" stroke={claw} strokeWidth="8" strokeLinecap="round" />
-      {/* Claws */}
-      <g id="claws">
-        <path d="M68 110 q-20 -16 -30 -30 q20 2 30 12 q2 -10 8 -18 q2 14 8 36 z" fill={claw} />
-        <path d="M188 110 q20 -16 30 -30 q-20 2 -30 12 q-2 -10 -8 -18 q-2 14 8 36 z" fill={claw} />
-      </g>
-    </svg>
-  );
-}
-
-// CrabGraphic: renders an external image if configured, otherwise falls back to the inline CrabSVG.
-// How to swap the crab image:
-// 1) Add your image to the public folder, e.g. public/img/play/kingcrab_boss.svg (or .png/.webp)
-// 2) Set NEXT_PUBLIC_CRAB_IMAGE to the public path (e.g. "/img/play/kingcrab_boss.svg"), or
-//    change the DEFAULT_CRAB_IMAGE below.
-// 3) If the file is an SVG, it's inlined so page CSS can target #claws and #eyes.
-const DEFAULT_CRAB_IMAGE = "/img/play/kingcrab_boss.svg"; // place file at public/img/play/kingcrab_boss.svg
-
-function CrabGraphic({ className, lowHp }: { className?: string; lowHp?: boolean }) {
-  const src = process.env.NEXT_PUBLIC_CRAB_IMAGE || DEFAULT_CRAB_IMAGE;
-  if (src && src.toLowerCase().endsWith('.svg')) {
-    return <InlineSvg className={`${lowHp ? 'lowhp ' : ''}crab-svg-inline ${className || ''}`} src={src} />;
-  }
-  if (src) {
-    return (
-      <span className={`${lowHp ? 'lowhp ' : ''}${className || ''}`}>
-        <NextImage
-          src={src}
-          alt="Crab"
-          width={512}
-          height={512}
-          className="h-full w-full object-contain select-none"
-          priority
-        />
-      </span>
-    );
-  }
-  return (
-    <span className={`${lowHp ? 'lowhp ' : ''}crab-svg-inline ${className || ''}`}>
-      <CrabSVG className="h-full w-full" lowHp={lowHp} />
-    </span>
-  );
-}
-
-function InlineSvg({ src, className }: { src: string; className?: string }) {
-  const [markup, setMarkup] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    let canceled = false;
-    fetch(src)
-      .then((r) => r.text())
-      .then((t) => { if (!canceled) setMarkup(t); })
-      .catch(() => { if (!canceled) setMarkup(null); });
-    return () => { canceled = true; };
-  }, [src]);
-  return <span className={className} dangerouslySetInnerHTML={markup ? { __html: markup } : undefined} />;
 }
