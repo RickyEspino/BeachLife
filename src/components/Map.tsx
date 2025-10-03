@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, { Marker, Popup, ViewState, MapRef } from 'react-map-gl/mapbox';
+import NextImage from 'next/image';
+import MerchantPinIcon from '@/components/MerchantPinIcon';
 // removed avatar Image for user marker; using GeolocateControl's built-in indicator
 
 export type BasePin = {
@@ -324,19 +326,17 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
                   <div className="relative">
                     <button
                       aria-label={`Merchant: ${p.name}${is2x ? ' (2x Points active)' : ''}`}
-                      className="text-xl drop-shadow-sm"
+                      className="group relative focus:outline-none"
                       onClick={e => { e.preventDefault(); setSelected({ id: p.id, name: p.name, latitude: p.latitude, longitude: p.longitude, category: p.category }); }}
                     >
-                      🏪
+                      <MerchantPinIcon category={p.category} />
                     </button>
                     {is2x && (
                       <span
                         className={`absolute -top-3 -right-3 rounded-full text-[10px] font-bold px-1.5 py-0.5 shadow ring-1 ring-black/10 select-none 
                           ${urgent ? 'bg-red-600 text-white animate-[pulse_0.8s_ease-in-out_infinite]' : fading ? 'bg-gradient-to-br from-amber-500/30 to-amber-400/20 text-amber-600 animate-pulse' : 'bg-amber-500 text-white animate-pulse'}`}
                         title={`2× Points Active${urgent ? ' (ending very soon)' : fading ? ' (ending soon)' : ''}`}
-                      >
-                        2×
-                      </span>
+                      >2×</span>
                     )}
                   </div>
                 </Marker>
@@ -346,7 +346,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
                 <Marker key={p.id} longitude={p.longitude} latitude={p.latitude} anchor="center">
                   <div className="relative -translate-y-1 -translate-x-1" title={p.username}>
                     {p.avatarUrl ? (
-                      <Image
+                      <NextImage
                         src={p.avatarUrl}
                         alt={p.username || 'user'}
                         width={38}
@@ -490,7 +490,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
               style={{ transform: `translate(${selfOffset.dx}px, ${selfOffset.dy}px)` }}
             >
               <div className="relative -translate-y-1 -translate-x-1">
-                <Image
+                <NextImage
                   src={userAvatarUrl}
                   alt="Your avatar location"
                   width={40}
@@ -556,3 +556,5 @@ function Ticker({ minute = false, intervalMs }: { minute?: boolean; intervalMs?:
   }, [minute, intervalMs]);
   return null;
 }
+
+// MerchantPinIcon moved to its own component; import above.
