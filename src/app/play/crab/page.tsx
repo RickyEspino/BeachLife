@@ -91,6 +91,7 @@ export default function Page() {
   const [shakeKey, setShakeKey] = useState<number>(0);
   const [flash, setFlash] = useState<boolean>(false);
   const [celebrate, setCelebrate] = useState<boolean>(false);
+  const [damageFlash, setDamageFlash] = useState<boolean>(false); // red flash when player takes damage
   // Screen shake (separate from pop animation key)
   const [shakeMag, setShakeMag] = useState<number>(0); // pixels (max amplitude)
   const shakeUntilRef = useRef<number>(0);
@@ -218,7 +219,7 @@ export default function Page() {
 
   // Play tiny procedural SFX
   const sfx = useCallback(
-    (type: "tap" | "crit" | "tick" | "win" | "lose") => {
+  (type: "tap" | "crit" | "tick" | "win" | "lose" | "alert") => {
       if (!soundOn) return;
       const ctx = audioCtxRef.current;
       if (!ctx) return;
@@ -266,6 +267,12 @@ export default function Page() {
         case "lose": {
           // Short downward wah
           make(240, 0.12, "sawtooth", 0.10);
+          break;
+        }
+        case "alert": {
+          // Pulsing low HP alert: two quick beeps
+          make(440, 0.08, "sine", 0.13);
+          setTimeout(() => make(392, 0.10, "triangle", 0.11), 110);
           break;
         }
       }
@@ -455,6 +462,40 @@ export default function Page() {
   const crabHpPct = hp / STARTING_HP;
   const playerHpPct = playerHp / PLAYER_STARTING_HP;
 
+  // Low HP sound cue (once per battle per entity)
+  const crabLowPlayedRef = useRef(false);
+  const playerLowPlayedRef = useRef(false);
+  useEffect(() => {
+    if (state !== 'BATTLE') {
+      crabLowPlayedRef.current = false;
+      playerLowPlayedRef.current = false;
+      return;
+    }
+    if (!crabLowPlayedRef.current && crabHpPct < 0.3 && hp > 0) {
+      sfx('alert');
+      crabLowPlayedRef.current = true;
+    }
+    if (!playerLowPlayedRef.current && playerHpPct < 0.3 && playerHp > 0) {
+      sfx('alert');
+      playerLowPlayedRef.current = true;
+    }
+  }, [state, crabHpPct, playerHpPct, hp, playerHp, sfx]);
+
+  // Track player HP drops to trigger damage flash (rate-limited)
+  const lastDamageFlashRef = useRef<number>(0);
+  const prevPlayerHpRef = useRef<number>(playerHp);
+  useEffect(() => {
+    if (state === 'BATTLE' && playerHp < prevPlayerHpRef.current) {
+      const now = performance.now();
+      if (now - lastDamageFlashRef.current > 420) { // rate limit ~0.4s
+        lastDamageFlashRef.current = now;
+        setDamageFlash(true);
+        setTimeout(() => setDamageFlash(false), 160);
+      }
+    }
+    prevPlayerHpRef.current = playerHp;
+  }, [playerHp, state]);
+
   return (
     <main className="min-h-dvh w-full relative overflow-hidden bg-[radial-gradient(1200px_600px_at_70%_-10%,rgba(255,200,150,0.35),transparent),radial-gradient(800px_400px_at_10%_90%,rgba(56,189,248,0.25),transparent)] dark:bg-[radial-gradient(1200px_600px_at_70%_-10%,rgba(251,146,60,0.25),transparent),radial-gradient(800px_400px_at_10%_90%,rgba(59,130,246,0.2),transparent)]">
       {/* Floating bubbles */}
@@ -533,27 +574,7 @@ export default function Page() {
             </div>
 
             <div className={`relative mx-auto aspect-square ${state === 'BATTLE' ? 'w-[min(100vh,100vw)] max-w-none' : 'max-w-[520px]'}`}>
-              {/* HUD Bars during battle */}
-              {state === 'BATTLE' && (
-                <div className="absolute top-4 left-4 right-4 space-y-3 select-none pointer-events-none">
-                  <HpBar label="CRAB" pct={crabHpPct} colorFrom="#f97316" colorTo="#f59e0b" danger={lowHp} />
-                  <HpBar label="YOU" pct={playerHpPct} colorFrom="#0ea5e9" colorTo="#10b981" danger={playerHpPct <= 0.25} reverse />
-                  {powerUps.length > 0 && (
-                    <div className="flex gap-2 flex-wrap pt-1">
-                      {powerUps.filter(p => p.key === 'shield' || p.expiresAt > performance.now()).map(p => {
-                        const remaining = p.key === 'shield' ? 0 : Math.ceil((p.expiresAt - performance.now()) / 1000);
-                        const label = p.key === 'slow' ? 'Slow' : p.key === 'double' ? 'Double' : 'Shield';
-                        const color = p.key === 'slow' ? 'bg-blue-500/80' : p.key === 'double' ? 'bg-fuchsia-500/80' : 'bg-emerald-600/80';
-                        return (
-                          <span key={p.key} className={`pointer-events-auto text-[10px] tracking-wide font-semibold px-2 py-1 rounded-full text-white backdrop-blur ${color}`}>
-                            {label}{p.key !== 'shield' && <span className="ml-1 opacity-80">{remaining}s</span>}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* (Removed inline HUD bars; repositioned to fixed top/bottom) */}
 
               {/* Celebration burst */}
               {celebrate && !reducedMotion && (
@@ -702,7 +723,39 @@ export default function Page() {
           100% { transform: scale(1.2); opacity: 0 }
         }
         .animate-burst { animation: burst 0.9s ease forwards; }
+        @keyframes hpFlash { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+        .hp-bar-critical { animation: hpFlash 0.7s linear infinite; }
+        @keyframes damageFlash { 0% { background: rgba(239,68,68,0); } 25% { background: rgba(239,68,68,0.35); } 100% { background: rgba(239,68,68,0); } }
+        .animate-damageFlash { animation: damageFlash 0.18s ease; }
       `}</style>
+
+      {/* Fixed HUD Bars (top/bottom) */}
+      {state === 'BATTLE' && (
+        <>
+          <div className="fixed top-2 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-40 select-none">
+            <BattleHpBar label="CRAB" pct={crabHpPct} />
+            {powerUps.length > 0 && (
+              <div className="flex gap-2 flex-wrap pt-2">
+                {powerUps.filter(p => p.key === 'shield' || p.expiresAt > performance.now()).map(p => {
+                  const remaining = p.key === 'shield' ? 0 : Math.ceil((p.expiresAt - performance.now()) / 1000);
+                  const label = p.key === 'slow' ? 'Slow' : p.key === 'double' ? 'Double' : 'Shield';
+                  const color = p.key === 'slow' ? 'bg-blue-500/80' : p.key === 'double' ? 'bg-fuchsia-500/80' : 'bg-emerald-600/80';
+                  return (
+                    <span key={p.key} className={`text-[10px] tracking-wide font-semibold px-2 py-1 rounded-full text-white backdrop-blur ${color}`}>
+                      {label}{p.key !== 'shield' && <span className="ml-1 opacity-80">{remaining}s</span>}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div className="fixed bottom-2 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-40 select-none">
+            <BattleHpBar label="YOU" pct={playerHpPct} />
+          </div>
+          {/* Damage flash overlay */}
+          <div className={`pointer-events-none fixed inset-0 z-30 ${damageFlash ? 'animate-damageFlash' : ''}`}></div>
+        </>
+      )}
     </main>
   );
 }
@@ -721,22 +774,31 @@ function InfoPill({ label, value, emphasize }: { label: string; value: string; e
   );
 }
 
-function HpBar({ label, pct, colorFrom, colorTo, danger, reverse }: { label: string; pct: number; colorFrom: string; colorTo: string; danger?: boolean; reverse?: boolean }) {
+// Legacy HpBar kept for reference (unused now)
+// function HpBar(...) {}
+
+function BattleHpBar({ label, pct }: { label: string; pct: number }) {
   const clamped = Math.max(0, Math.min(1, pct));
+  let color = 'bg-green-500';
+  let gradient = 'from-green-500 to-green-400';
+  if (clamped < 0.6 && clamped >= 0.3) {
+    color = 'bg-yellow-400';
+    gradient = 'from-yellow-400 to-yellow-300';
+  } else if (clamped < 0.3) {
+    color = 'bg-red-600';
+    gradient = 'from-red-600 to-red-500';
+  }
+  const critical = clamped < 0.3;
   return (
     <div className="w-full">
-      <div className="flex justify-between mb-0.5 text-[10px] font-semibold tracking-wide text-white drop-shadow">
+      <div className="flex justify-between mb-1 text-[11px] font-semibold tracking-wide text-white drop-shadow">
         <span>{label}</span>
         <span>{Math.ceil(clamped * 100)}%</span>
       </div>
-      <div className="h-3 w-full rounded-full bg-black/30 overflow-hidden ring-1 ring-white/10 backdrop-blur-sm">
+      <div className="h-4 w-full rounded-full bg-black/40 overflow-hidden ring-1 ring-white/10 backdrop-blur-sm">
         <div
-          className={`h-full transition-[width] duration-120 ease-linear ${danger ? 'animate-pulse' : ''}`}
-          style={{
-            width: `${clamped * 100}%`,
-            background: `linear-gradient(90deg, ${colorFrom}, ${colorTo})`,
-            transform: reverse ? 'scaleX(-1)' : undefined
-          }}
+          className={`h-full ${critical ? 'hp-bar-critical' : 'transition-[width] duration-150'} ${color} bg-gradient-to-r ${gradient}`}
+          style={{ width: `${clamped * 100}%` }}
         />
       </div>
     </div>
