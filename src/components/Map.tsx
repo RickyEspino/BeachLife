@@ -171,6 +171,28 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
     return list;
   }, [unifiedPoints, clusterRadiusMeters]);
 
+  // Determine if the user avatar (self) sits inside a cluster; if so compute an offset direction.
+  const selfOffset = useMemo(() => {
+    if (!showUserLocation || !userPos || !userAvatarUrl) return { dx: 0, dy: 0 };
+    // meters per pixel at current latitude & zoom
+    const lat = userPos.latitude;
+    const z = zoom || 0;
+    const metersPerPixel = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z);
+    // If cluster center within (avatarRadius + clusterRadius) * meters threshold, offset.
+    const nearby = clusters.find(c => {
+      const dist = distanceMeters(c.latitude, c.longitude, userPos.latitude, userPos.longitude);
+      // Treat cluster visual radius roughly 28px, avatar 22px => sum ~50px => meters threshold:
+      return dist < metersPerPixel * 50 && !(c.count === 1 && c.points[0].type === 'user' && c.points[0].id.endsWith(userPos.latitude.toString()));
+    });
+    if (!nearby) return { dx: 0, dy: 0 };
+    // Offset vector away from cluster center
+    const angle = Math.atan2(userPos.latitude - nearby.latitude, userPos.longitude - nearby.longitude) || 0;
+    const px = 42; // push avatar 42px out so its ring clears the cluster circle
+    const dx = Math.cos(angle) * px;
+    const dy = Math.sin(angle) * px;
+    return { dx, dy };
+  }, [showUserLocation, userPos, userAvatarUrl, clusters, zoom]);
+
   const handleClusterClick = (c: Cluster) => {
     // Zoom in towards cluster center to expand
     const targetZoom = Math.min(((viewState.zoom as number) || 0) + 2, 18);
@@ -324,17 +346,30 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
         {/* Custom user avatar marker at user position (single fetch, no continuous tracking) */}
         {showUserLocation && userPos && userAvatarUrl && (
           <Marker longitude={userPos.longitude} latitude={userPos.latitude} anchor="center">
-            <div className="relative -translate-y-1 -translate-x-1">
-              <Image
-                src={userAvatarUrl}
-                alt="Your avatar location"
-                width={40}
-                height={40}
-                className="h-10 w-10 rounded-full ring-2 ring-white shadow object-cover"
-                draggable={false}
-                priority
-              />
-              <span className="absolute inset-0 rounded-full ring ring-blue-500/40 animate-pulse pointer-events-none" aria-hidden="true" />
+            <div
+              className="relative"
+              style={{ transform: `translate(${selfOffset.dx}px, ${selfOffset.dy}px)` }}
+            >
+              <div className="relative -translate-y-1 -translate-x-1">
+                <Image
+                  src={userAvatarUrl}
+                  alt="Your avatar location"
+                  width={40}
+                  height={40}
+                  className="h-10 w-10 rounded-full ring-2 ring-white shadow object-cover"
+                  draggable={false}
+                  priority
+                />
+                <span className="absolute inset-0 rounded-full ring ring-blue-500/40 animate-pulse pointer-events-none" aria-hidden="true" />
+              </div>
+              {selfOffset.dx !== 0 || selfOffset.dy !== 0 ? (
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none" aria-hidden>
+                  <span
+                    className="block h-0.5 w-8 bg-blue-400/50 rotate-[--angle] origin-left"
+                    style={{ ['--angle' as string]: `${Math.atan2(selfOffset.dy, selfOffset.dx)}rad` } as React.CSSProperties}
+                  />
+                </div>
+              ) : null}
             </div>
           </Marker>
         )}
