@@ -252,10 +252,12 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
       geometry: { type: 'Point' as const, coordinates: [p.longitude, p.latitude] }
     }));
     if (features.length === 0) return null;
-    return new Supercluster<{ pointId: string; pointType: string }>({
+    type PointProps = { pointId: string; pointType: string };
+    const pointFeatures: Supercluster.PointFeature<PointProps>[] = features as Supercluster.PointFeature<PointProps>[];
+    return new Supercluster<PointProps>({
       radius: 60,
       maxZoom: 18,
-    }).load(features as any);
+    }).load(pointFeatures);
   }, [unifiedPoints]);
 
   // Derive clusters for current viewport bounds + zoom
@@ -270,19 +272,21 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
     const raw = supercluster.getClusters(bounds, Math.round(zoom));
     const out: Cluster[] = [];
     for (const f of raw) {
-      const [lng, lat] = (f.geometry as any).coordinates as [number, number];
-      const props: any = f.properties;
-      if (props.cluster) {
-        // gather leaves (cap large clusters for perf safety)
+      if (f.geometry.type !== 'Point') continue; // safety
+      const coords = f.geometry.coordinates as [number, number];
+      const [lng, lat] = coords;
+      const props = f.properties as ({ pointId: string; pointType: string } & { cluster?: false }) | ({ cluster: true; cluster_id: number; point_count: number; point_count_abbreviated?: string });
+      if ('cluster' in props && props.cluster) {
         const leaves = supercluster.getLeaves(props.cluster_id, Math.min(1000, props.point_count));
         const pts: UnifiedPoint[] = [];
         for (const l of leaves) {
-          const pid = (l.properties as any).pointId;
-          const found = unifiedPoints.find(p => p.id === pid);
+          const leafProps = l.properties as { pointId: string; pointType: string } | undefined;
+          if (!leafProps) continue;
+          const found = unifiedPoints.find(p => p.id === leafProps.pointId);
           if (found) pts.push(found);
         }
         out.push({ id: `c-${props.cluster_id}`, latitude: lat, longitude: lng, count: props.point_count, points: pts });
-      } else {
+      } else if ('pointId' in props) {
         const single = unifiedPoints.find(p => p.id === props.pointId);
         if (single) out.push({ id: single.id, latitude: single.latitude, longitude: single.longitude, count: 1, points: [single] });
       }

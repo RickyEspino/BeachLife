@@ -17,10 +17,10 @@ export default function CreateReel({ onCreated }: Props) {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const reset = () => {
+  const reset = useCallback(() => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setFileName(null); setPreviewUrl(null); setCaption(''); setError(null);
-  };
+  }, [previewUrl]);
 
   const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -94,11 +94,7 @@ export default function CreateReel({ onCreated }: Props) {
     } finally {
       setUploading(false);
     }
-  }, [previewUrl, fileName, caption, supabase, onCreated]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  // Rationale: 'reset' only mutates local state and recreating the callback each render would cause
-  // unnecessary re-renders in parents passing stable handlers. Its body closes over the latest state
-  // values we care about (previewUrl, fileName, caption). Keeping it out of deps is acceptable here.
+  }, [previewUrl, fileName, caption, supabase, onCreated, reset]);
 
   return (
     <div className="w-full max-w-sm mx-auto p-4 space-y-4 bg-white/90 backdrop-blur rounded-md shadow border border-gray-200">
