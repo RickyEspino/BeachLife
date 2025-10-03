@@ -212,6 +212,43 @@ export default async function NowPage() {
       <div className="mx-auto max-w-2xl space-y-5">
         <RotatingBeachHeader />
 
+        {/* Goals / actions moved above highlights */}
+        {(canClaimDaily || canClaimProfileComplete) && (
+          <section className="rounded-xl border p-4 space-y-3 bg-white/70 backdrop-blur-sm">
+            <h2 className="font-semibold tracking-tight text-sm text-gray-700">Quick actions</h2>
+            <div className="flex flex-col sm:flex-row gap-3">
+              {canClaimDaily && (
+                <form action={claimDailyAction} className="group flex-1">
+                  <button type="submit" className="w-full h-full text-left rounded-lg border bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm hover:shadow transition focus:outline-none focus:ring-2 focus:ring-emerald-500/50">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white text-xs font-semibold shadow">+500</span>
+                      <div className="flex-1">
+                        <div className="font-medium text-emerald-700">Daily check-in</div>
+                        <p className="text-xs text-emerald-800/80">Tap to claim today’s boost.</p>
+                      </div>
+                      <span className="text-emerald-600 text-sm font-medium group-hover:translate-x-0.5 transition">→</span>
+                    </div>
+                  </button>
+                </form>
+              )}
+              {canClaimProfileComplete && (
+                <form action={claimProfileCompleteAction} className="group flex-1">
+                  <button type="submit" className="w-full h-full text-left rounded-lg border bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm hover:shadow transition focus:outline-none focus:ring-2 focus:ring-blue-500/50">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white text-xs font-semibold shadow">+100</span>
+                      <div className="flex-1">
+                        <div className="font-medium text-blue-700">Complete profile</div>
+                        <p className="text-xs text-blue-800/80">Username + avatar bonus.</p>
+                      </div>
+                      <span className="text-blue-600 text-sm font-medium group-hover:translate-x-0.5 transition">→</span>
+                    </div>
+                  </button>
+                </form>
+              )}
+            </div>
+          </section>
+        )}
+
         {/* Greeting line */}
         <div>
           <p className="text-gray-800 text-base font-semibold">{greeting}{username ? "!" : "!"}</p>
@@ -219,7 +256,7 @@ export default async function NowPage() {
         </div>
 
                 {/* Other “Now” content can go here… */}
-        <section className="rounded-xl border p-4 space-y-3 bg-white/70 backdrop-blur-sm">
+  <section className="rounded-xl border p-4 space-y-3 bg-white/70 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="font-semibold tracking-tight">Today’s beach highlights</h2>

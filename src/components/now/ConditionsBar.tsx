@@ -16,21 +16,19 @@ function scoreColor(score: number) {
   return "bg-rose-500";
 }
 
-export const ConditionsBar: React.FC<ConditionsBarProps> = ({ tempC, condition, uv, windKph, beachScore }) => {
+export const ConditionsBar: React.FC<ConditionsBarProps> = ({ tempC, condition, uv: _uv, windKph, beachScore }) => {
+  const tempF = Math.round((tempC * 9) / 5 + 32);
+  const windMph = Math.round(windKph * 0.621371);
   return (
     <div className="flex flex-wrap items-center gap-4 rounded-xl border p-3 text-sm">
       <div className="flex items-baseline gap-1 font-semibold">
-        <span className="text-2xl">{Math.round(tempC)}°</span>
-        <span className="text-xs text-gray-500">C</span>
+        <span className="text-2xl">{tempF}°</span>
+        <span className="text-xs text-gray-500">F</span>
       </div>
       {condition && <div className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 font-medium">{condition}</div>}
       <div className="flex items-center gap-1">
-        <span className="font-medium">UV</span>
-        <span className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-700">{uv}</span>
-      </div>
-      <div className="flex items-center gap-1">
         <span className="font-medium">Wind</span>
-        <span className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-700">{Math.round(windKph)} km/h</span>
+        <span className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-700">{windMph} mph</span>
       </div>
       <div className="ml-auto flex items-center gap-2">
         <span className="text-xs font-medium text-gray-500">Beach score</span>
