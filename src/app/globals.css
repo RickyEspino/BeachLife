@@ -22,7 +22,8 @@ html, body { height: 100%; }
 
 /* Put base element tweaks under the base layer */
 @layer base {
-  body { @apply bg-white text-gray-900; }
+  /* Global dark background (Option B) */
+  body { @apply bg-black text-gray-100; }
 }
 
 /*********************

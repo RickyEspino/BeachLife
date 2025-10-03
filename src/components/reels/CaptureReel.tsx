@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from 'react';
+import Image from 'next/image';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browserClient';
 import type { ReelItem } from './ReelCard';
 
@@ -19,6 +20,7 @@ export default function CaptureReel({ onCancel, onCreated }: Props) {
   const [uploading, setUploading] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [facing, setFacing] = useState<'environment' | 'user'>('environment');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -84,7 +86,21 @@ export default function CaptureReel({ onCancel, onCreated }: Props) {
 
   const retake = () => {
     setCapturedBlob(null);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
   };
+
+  // Generate / revoke object URL for preview when capturedBlob changes
+  useEffect(() => {
+    if (!capturedBlob) return;
+    const url = URL.createObjectURL(capturedBlob);
+    setPreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [capturedBlob]);
 
   const upload = useCallback(async () => {
     if (!capturedBlob) return;
@@ -120,9 +136,17 @@ export default function CaptureReel({ onCancel, onCreated }: Props) {
           <video ref={videoRef} playsInline muted className="absolute inset-0 h-full w-full object-cover" />
         </div>
       )}
-      {capturedBlob && (
+      {capturedBlob && previewUrl && (
         <div className="relative aspect-[9/16] w-40 rounded overflow-hidden bg-gray-200">
-          <img src={URL.createObjectURL(capturedBlob)} alt="Captured preview" className="h-full w-full object-cover" />
+          <Image
+            src={previewUrl}
+            alt="Captured preview"
+            fill
+            unoptimized
+            sizes="160px"
+            className="object-cover"
+            priority
+          />
         </div>
       )}
       {!capturedBlob && !initializing && (
