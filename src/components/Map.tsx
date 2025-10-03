@@ -7,6 +7,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, { Marker, Popup, ViewState, MapRef } from 'react-map-gl/mapbox';
 import NextImage from 'next/image';
 import MerchantPinIcon from '@/components/MerchantPinIcon';
+import React from 'react';
 // removed avatar Image for user marker; using GeolocateControl's built-in indicator
 
 export type BasePin = {
@@ -322,6 +323,17 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
     return { is2x: true, urgent, fading };
   }, [doubleIds, doubleMeta]);
 
+  // Memoized promo badge component to avoid re-rendering whole marker subtree when not needed.
+  const PromoBadge = React.useMemo(() => function PromoBadge({ urgent, fading }: { urgent: boolean; fading: boolean }) {
+    return (
+      <span
+        className={`absolute -top-3 -right-3 rounded-full text-[10px] font-bold px-1.5 py-0.5 shadow ring-1 ring-black/10 select-none 
+          ${urgent ? 'bg-red-600 text-white animate-[pulse_0.8s_ease-in-out_infinite]' : fading ? 'bg-gradient-to-br from-amber-500/30 to-amber-400/20 text-amber-600 animate-pulse' : 'bg-amber-500 text-white animate-pulse'}`}
+        title={`2× Points Active${urgent ? ' (ending very soon)' : fading ? ' (ending soon)' : ''}`}
+      >2×</span>
+    );
+  }, []);
+
   return (
     <div className="fixed inset-0" role="region" aria-label="Interactive map of merchants and beaches">
       {!token && (
@@ -362,13 +374,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
                     >
                       <MerchantPinIcon category={p.category} />
                     </button>
-                    {is2x && (
-                      <span
-                        className={`absolute -top-3 -right-3 rounded-full text-[10px] font-bold px-1.5 py-0.5 shadow ring-1 ring-black/10 select-none 
-                          ${urgent ? 'bg-red-600 text-white animate-[pulse_0.8s_ease-in-out_infinite]' : fading ? 'bg-gradient-to-br from-amber-500/30 to-amber-400/20 text-amber-600 animate-pulse' : 'bg-amber-500 text-white animate-pulse'}`}
-                        title={`2× Points Active${urgent ? ' (ending very soon)' : fading ? ' (ending soon)' : ''}`}
-                      >2×</span>
-                    )}
+                    {is2x && <PromoBadge urgent={urgent} fading={fading} />}
                   </div>
                 </Marker>
               );
@@ -419,10 +425,8 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
               >
                 {c.count}
                 <span className="absolute -inset-1 rounded-full animate-ping bg-emerald-400/30" aria-hidden="true" />
-                {has2x && (
-                  <span className={`absolute -top-1 -right-1 h-5 w-5 rounded-full text-[10px] font-bold flex items-center justify-center shadow ring-1 ring-black/10 
-                    ${hasUrgent ? 'bg-red-600 text-white animate-[pulse_0.8s_ease-in-out_infinite]' : hasFading ? 'bg-amber-500/80 text-white animate-pulse' : 'bg-amber-500 text-white animate-pulse'}`}>2×</span>
-                )}
+                {has2x && <span className={`absolute -top-1 -right-1 h-5 w-5 rounded-full text-[10px] font-bold flex items-center justify-center shadow ring-1 ring-black/10 
+                    ${hasUrgent ? 'bg-red-600 text-white animate-[pulse_0.8s_ease-in-out_infinite]' : hasFading ? 'bg-amber-500/80 text-white animate-pulse' : 'bg-amber-500 text-white animate-pulse'}`}>2×</span>}
               </button>
             </Marker>
           );
