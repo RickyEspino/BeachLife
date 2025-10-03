@@ -343,7 +343,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
               const urgent = is2x && expiresAt !== 0 && msLeft < 30 * 60 * 1000 && msLeft > 0; // final 30m
               return (
                 <Marker key={p.id} longitude={p.longitude} latitude={p.latitude} anchor="bottom">
-                  <div className="relative">
+                  <div className="relative" data-merchant-id={p.id} data-category={p.category || ''}>
                     <button
                       aria-label={`Merchant: ${p.name}${is2x ? ' (2x Points active)' : ''}`}
                       className="group relative focus:outline-none appearance-none bg-transparent p-0 border-0"

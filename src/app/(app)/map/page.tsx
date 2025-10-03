@@ -63,7 +63,7 @@ export default async function Page({ searchParams }: { searchParams?: Record<str
         userAvatarUrl={userAvatarUrl}
         currentUserId={currentUserId}
       />
-      <MapCategoryOverlay categories={categories} />
+      <MapCategoryOverlay categories={categories} merchants={merchants} />
     </section>
   );
 }
