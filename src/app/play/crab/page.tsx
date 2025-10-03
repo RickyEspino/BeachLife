@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 const BOSS_MAX = 100;
 const PLAYER_MAX = 100;
@@ -149,9 +150,22 @@ export default function Page() {
   const [comboCharge, setComboCharge] = useState(0); // 0..1 normalized
   const [comboLevel, setComboLevel] = useState(0); // discrete tiers for styling
   const [particles, setParticles] = useState<Array<{ id: number; x: number; y: number; hue: number; size: number; life: number; created: number }>>([]);
+  // Battle stats
+  const [victoryAt, setVictoryAt] = useState<number | null>(null);
+  const [defeatAt, setDefeatAt] = useState<number | null>(null);
+  const [statsVersion, setStatsVersion] = useState(0); // trigger re-render when refs update
+  const statsRef = useRef({
+    start: performance.now(),
+    hits: 0,
+    crits: 0,
+    blocks: 0,
+    totalDamage: 0,
+    maxCombo: 0,
+  });
   const comboRef = useRef(0); // current raw combo count
   const comboExpireTimer = useRef<number | null>(null);
   const nextParticleId = useRef(1);
+  const router = useRouter();
   const comboCountRef = useRef(0);
   const lastHitTimeRef = useRef<number>(0);
   const nextIdRef = useRef(1);
@@ -305,6 +319,12 @@ export default function Page() {
     const dmg = isCrit ? Math.round(base * 1.6) : base;
     setBossHp((h) => Math.max(0, h - dmg));
     flash(part);
+  // stats update
+  statsRef.current.hits += 1;
+  if (isCrit) statsRef.current.crits += 1;
+  statsRef.current.totalDamage += dmg;
+  if (comboCountRef.current > statsRef.current.maxCombo) statsRef.current.maxCombo = comboCountRef.current;
+  setStatsVersion(v => v + 1);
     // build combat text events
     const events: Array<{ text: string; type: 'hit' | 'crit' | 'combo' } > = [];
     if (isCrit) events.push({ text: `CRIT ${dmg}`, type: 'crit' });
@@ -356,6 +376,8 @@ export default function Page() {
     }, BLOCK_DURATION_MS);
     // show block text
     setCombatText(prev => [...prev, { id: nextIdRef.current++, text: 'BLOCK', type: 'block', created: Date.now() }]);
+    statsRef.current.blocks += 1;
+    setStatsVersion(v => v + 1);
   }, [flash]);
 
   const restartGame = useCallback(() => {
@@ -368,6 +390,10 @@ export default function Page() {
     setComboLevel(0);
     setComboCharge(0);
     setParticles([]);
+    setVictoryAt(null);
+    setDefeatAt(null);
+    statsRef.current = { start: performance.now(), hits: 0, crits: 0, blocks: 0, totalDamage: 0, maxCombo: 0 };
+    setStatsVersion(v => v + 1);
   }, []);
 
   // Attach hit handlers
@@ -390,6 +416,16 @@ export default function Page() {
   const bossPct = (bossHp / BOSS_MAX) * 100;
   const playerPct = (playerHp / PLAYER_MAX) * 100;
   const gameOver = bossHp <= 0 || playerHp <= 0;
+
+  // Detect victory / defeat timestamps
+  useEffect(() => {
+    if (victoryAt || defeatAt) return; // already decided
+    if (bossHp <= 0 && playerHp > 0) {
+      setVictoryAt(performance.now());
+    } else if (playerHp <= 0 && bossHp > 0) {
+      setDefeatAt(performance.now());
+    }
+  }, [bossHp, playerHp, victoryAt, defeatAt]);
 
   // Passive combo charge decay
   useEffect(() => {
@@ -550,20 +586,77 @@ export default function Page() {
             </div>
           </div>
 
-          {/* Result */}
+          {/* Result / Victory & Defeat Overlay */}
           {gameOver && (
-            <button
-              type="button"
-              onClick={restartGame}
-              className="absolute inset-0 grid place-items-center bg-black/40 backdrop-blur-[2px] focus:outline-none"
-            >
-              <div className="px-6 py-4 rounded-xl bg-neutral-900/90 ring-1 ring-white/10">
-                <div className="text-xl font-bold text-center">
-                  {bossHp <= 0 ? "You Win! 🦀" : "Defeated… 😵"}
-                </div>
-                <div className="text-xs opacity-75 mt-2 text-center">Tap to restart</div>
+            <div className="absolute inset-0 flex items-center justify-center bg-black/55 backdrop-blur-[3px] z-40 p-4">
+              <div className="w-full max-w-sm rounded-2xl bg-neutral-950/90 ring-1 ring-white/10 shadow-xl px-6 py-6 space-y-5">
+                {bossHp <= 0 && playerHp > 0 ? (
+                  <div className="space-y-3">
+                    <div className="text-center space-y-1">
+                      <h2 className="text-2xl font-black tracking-wide text-amber-300 drop-shadow-[0_0_8px_rgba(255,200,0,0.35)]">YOU WIN!!</h2>
+                      <p className="text-xs uppercase tracking-widest text-white/60">King Crab defeated</p>
+                    </div>
+                    {(() => {
+                      const elapsed = ((victoryAt ?? performance.now()) - statsRef.current.start) / 1000;
+                      const dps = statsRef.current.totalDamage / (elapsed || 1);
+                      return (
+                        <ul className="text-[11px] font-mono leading-relaxed grid grid-cols-2 gap-x-3 gap-y-1 text-white/80">
+                          <li><span className="text-white/40">Time:</span> {elapsed.toFixed(1)}s</li>
+                          <li><span className="text-white/40">DPS:</span> {dps.toFixed(1)}</li>
+                          <li><span className="text-white/40">Hits:</span> {statsRef.current.hits}</li>
+                          <li><span className="text-white/40">Crits:</span> {statsRef.current.crits}</li>
+                          <li><span className="text-white/40">Blocks:</span> {statsRef.current.blocks}</li>
+                          <li><span className="text-white/40">MaxCombo:</span> {statsRef.current.maxCombo}x</li>
+                          <li className="col-span-2"><span className="text-white/40">Total Damage:</span> {statsRef.current.totalDamage}</li>
+                        </ul>
+                      );
+                    })()}
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={() => router.push('/map')}
+                        className="flex-1 h-9 rounded-md bg-gradient-to-r from-amber-400 to-amber-600 text-black text-xs font-bold tracking-wide uppercase shadow hover:brightness-110 active:scale-[.97] transition"
+                      >Exit to Map</button>
+                      <button
+                        onClick={restartGame}
+                        className="flex-1 h-9 rounded-md bg-white/10 text-white text-xs font-semibold tracking-wide uppercase hover:bg-white/15 transition"
+                      >Restart</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="text-center space-y-1">
+                      <h2 className="text-2xl font-black tracking-wide text-red-300 drop-shadow-[0_0_8px_rgba(255,0,0,0.35)]">DEFEATED…</h2>
+                      <p className="text-xs uppercase tracking-widest text-white/60">Out of stamina</p>
+                    </div>
+                    {(() => {
+                      const elapsed = ((defeatAt ?? performance.now()) - statsRef.current.start) / 1000;
+                      const dps = statsRef.current.totalDamage / (elapsed || 1);
+                      return (
+                        <ul className="text-[11px] font-mono leading-relaxed grid grid-cols-2 gap-x-3 gap-y-1 text-white/80">
+                          <li><span className="text-white/40">Time:</span> {elapsed.toFixed(1)}s</li>
+                          <li><span className="text-white/40">DPS:</span> {dps.toFixed(1)}</li>
+                          <li><span className="text-white/40">Hits:</span> {statsRef.current.hits}</li>
+                          <li><span className="text-white/40">Crits:</span> {statsRef.current.crits}</li>
+                          <li><span className="text-white/40">Blocks:</span> {statsRef.current.blocks}</li>
+                          <li><span className="text-white/40">MaxCombo:</span> {statsRef.current.maxCombo}x</li>
+                          <li className="col-span-2"><span className="text-white/40">Total Damage:</span> {statsRef.current.totalDamage}</li>
+                        </ul>
+                      );
+                    })()}
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={() => router.push('/map')}
+                        className="flex-1 h-9 rounded-md bg-white/10 text-white text-xs font-semibold tracking-wide uppercase hover:bg-white/15 transition"
+                      >Exit</button>
+                      <button
+                        onClick={restartGame}
+                        className="flex-1 h-9 rounded-md bg-red-500/80 text-white text-xs font-bold tracking-wide uppercase shadow hover:brightness-110 active:scale-[.97] transition"
+                      >Retry</button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </button>
+            </div>
           )}
 
           {/* Thunder audio (optional) */}
