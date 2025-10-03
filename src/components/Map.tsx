@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, { Marker, Popup, ViewState, MapRef } from 'react-map-gl/mapbox';
@@ -63,6 +63,7 @@ type Cluster = {
 export default function MapComponent({ merchants = [], loadError, initialView, focusId, showUserLocation = false, userAvatarUrl, sharedUsers = [], serverPromos = [] }: Props) {
   const router = useRouter();
   const [mapRef, setMapRef] = useState<MapRef | null>(null);
+  const mapRefCb = useCallback((ref: MapRef | null) => { if (ref) setMapRef(ref); }, []);
   // Derive starting center: provided initialView > merchants centroid > fallback beaches[0]
   const centroid = useMemo(() => {
     if (!merchants.length) return null;
@@ -318,16 +319,18 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   // Central timestamp for promo urgency this render
-  const renderNow = Date.now();
+  // Stable promoState using a ticking ref updated once per minute (Ticker below triggers re-render)
+  const nowRef = useRef<number>(Date.now());
+  useEffect(() => { nowRef.current = Date.now(); });
   const promoState = useCallback((id: string) => {
     if (!doubleIds.includes(id)) return { is2x: false, urgent: false, fading: false };
     const expiresAt = doubleMeta[id] || 0;
     if (!expiresAt) return { is2x: true, urgent: false, fading: false };
-    const msLeft = expiresAt - renderNow;
+    const msLeft = expiresAt - nowRef.current;
     const urgent = msLeft > 0 && msLeft < 30 * 60 * 1000;
     const fading = !urgent && msLeft > 0 && msLeft < 60 * 60 * 1000;
     return { is2x: true, urgent, fading };
-  }, [doubleIds, doubleMeta, renderNow]);
+  }, [doubleIds, doubleMeta]);
 
   return (
     <div className="fixed inset-0" role="region" aria-label="Interactive map of merchants and beaches">
@@ -347,7 +350,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
       <Map
   {...viewState}
         onMove={(evt) => setViewState(evt.viewState)}
-  ref={(ref) => { if (ref) setMapRef(ref); }}
+  ref={mapRefCb}
         mapboxAccessToken={token}
         style={{ width: '100%', height: '100%' }}
         mapStyle="mapbox://styles/mapbox/streets-v11"
@@ -362,9 +365,9 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
               return (
                 <Marker key={p.id} longitude={p.longitude} latitude={p.latitude} anchor="bottom">
                   <div className="relative" data-merchant-id={p.id} data-category={p.category || ''}>
-                    <button
+                      <button
                       aria-label={`Merchant: ${p.name}${is2x ? ' (2x Points active)' : ''}`}
-                      className="group relative focus:outline-none appearance-none bg-transparent p-0 border-0"
+                      className="group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 rounded-md appearance-none bg-transparent p-0 border-0"
                       onClick={e => { e.preventDefault(); setSelected({ id: p.id, name: p.name, latitude: p.latitude, longitude: p.longitude, category: p.category }); }}
                     >
                       <MerchantPinIcon category={p.category} />
@@ -512,8 +515,9 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
         {/* Filter toggle for 2x merchants */}
         <button
           type="button"
+          aria-pressed={showDoubleOnly}
           onClick={() => setShowDoubleOnly(v => !v)}
-          className={`absolute left-4 bottom-[calc(180px+var(--safe-bottom))] rounded-full px-4 py-2 text-xs font-semibold shadow border backdrop-blur transition ${showDoubleOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-white/90 hover:bg-white text-gray-700'}`}
+          className={`absolute left-4 bottom-[calc(180px+var(--safe-bottom))] rounded-full px-4 py-2 text-xs font-semibold shadow border backdrop-blur transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 ${showDoubleOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-white/90 hover:bg-white text-gray-700'}`}
         >
           {showDoubleOnly ? 'Showing 2× Only' : 'Show 2× Only'}
         </button>
