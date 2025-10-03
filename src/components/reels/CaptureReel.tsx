@@ -5,11 +5,10 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/browserClient';
 import type { ReelItem } from './ReelCard';
 
 interface Props {
-  onCancel: () => void;
   onCreated: (item: ReelItem) => void;
 }
 
-export default function CaptureReel({ onCancel, onCreated }: Props) {
+export default function CaptureReel({ onCreated }: Props) {
   const supabase = createSupabaseBrowserClient();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

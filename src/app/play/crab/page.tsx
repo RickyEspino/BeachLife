@@ -1,5 +1,5 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * King Crab: Tap Battle (30s) — with Sound Toggle + SFX
@@ -11,7 +11,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 type BattleState = "READY" | "BATTLE" | "RESULT";
 
-const BATTLE_DURATION_MS = 30_000; // legacy reference (used for drain calibration)
+// Legacy: historical battle target length (30s) kept for tuning reference.
+// Removed unused constant to satisfy lint.
 const STARTING_HP = 100; // crab HP
 const PLAYER_STARTING_HP = 100; // player HP
 const PLAYER_DRAIN_PER_SEC = PLAYER_STARTING_HP / 30; // drains fully in ~30s if no win
@@ -354,9 +355,10 @@ export default function Page() {
   const start = useCallback(async () => {
     await ensureAudio(); // prime/resume audio on user action
     // Try fullscreen (graceful fail) for immersion
-    const el = document.documentElement;
-    if (el && (el as any).requestFullscreen) {
-      try { await (el as any).requestFullscreen(); } catch { /* ignore */ }
+    const el: HTMLElement | null = document.documentElement;
+    const reqFs = (el as HTMLElement & { requestFullscreen?: () => Promise<void> }).requestFullscreen;
+    if (el && typeof reqFs === 'function') {
+      try { await reqFs.call(el); } catch { /* ignore */ }
     }
   setHp(STARTING_HP);
   setPlayerHp(PLAYER_STARTING_HP);

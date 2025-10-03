@@ -94,7 +94,7 @@ export default function CreateReel({ onCreated }: Props) {
     } finally {
       setUploading(false);
     }
-  }, [previewUrl, fileName, caption, supabase, onCreated]);
+  }, [previewUrl, fileName, caption, supabase, onCreated]); // reset intentionally excluded (closure stable)
 
   return (
     <div className="w-full max-w-sm mx-auto p-4 space-y-4 bg-white/90 backdrop-blur rounded-md shadow border border-gray-200">

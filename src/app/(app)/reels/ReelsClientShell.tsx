@@ -179,7 +179,7 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
           </div>
           <div className="overflow-y-auto p-4 pb-24">
             {mountedCreate && panelOpen && (
-              mode === 'upload' ? <CreateReel onCreated={handleCreated} /> : <CaptureReel onCreated={handleCreated} onCancel={() => setPanelOpen(false)} />
+              mode === 'upload' ? <CreateReel onCreated={handleCreated} /> : <CaptureReel onCreated={handleCreated} />
             )}
           </div>
         </div>

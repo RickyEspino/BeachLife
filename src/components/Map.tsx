@@ -118,6 +118,10 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
       expiresAt: now + 5 * 60 * 1000 // 5 minutes
     };
     setCrabEvent(spawn);
+    try {
+      localStorage.setItem('crabEvent', JSON.stringify(spawn));
+      window.dispatchEvent(new CustomEvent('crab:event', { detail: spawn }));
+    } catch {}
   }, [showUserLocation, userPos, crabEvent]);
 
   // Countdown effect

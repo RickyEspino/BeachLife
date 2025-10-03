@@ -20,6 +20,7 @@ import { calculateEnhancedStreak } from "@/lib/now/streak";
 import { StreakCard } from "@/components/now/StreakCard";
 import { awardPointsOnce, awardPointsOncePerDay } from "@/app/actions/points";
 import Link from "next/link";
+import CrabEventAlert from '@/components/now/CrabEventAlert';
 
 export const dynamic = "force-dynamic"; // surface daily availability immediately
 
@@ -249,6 +250,8 @@ export default async function NowPage() {
     <main className="p-6">
       <div className="mx-auto max-w-2xl space-y-5">
         <RotatingBeachHeader />
+        {/* King Crab Event Alert (client / ephemeral) */}
+        <CrabEventAlert />
 
         {/* Goals / actions moved above highlights */}
         {(canClaimDaily || canClaimProfileComplete) && (

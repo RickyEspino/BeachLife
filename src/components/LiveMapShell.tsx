@@ -46,7 +46,7 @@ export default function LiveMapShell({ merchants, loadError, initialView, focusI
       if (timerRef.current) clearInterval(timerRef.current);
       window.removeEventListener('focus', onFocus);
     };
-  }, [pollIntervalMs]);
+  }, [pollIntervalMs, fetchShared]);
 
   return (
     <>
