@@ -26,18 +26,35 @@ export default function CategoryBottomSheet({ open, category, merchants, onClose
   const [dragY, setDragY] = useState(0);
   const [sheetState, setSheetState] = useState<SheetState>('peek');
   const dragDirectionRef = useRef<'up' | 'down' | null>(null);
+  const moveSamplesRef = useRef<Array<{ y: number; t: number }>>([]);
 
-  // Prevent background scroll when open (mobile-friendly)
+  // Presence + animation state (for enter/exit)
+  const [present, setPresent] = useState(open);
+  const [animOpen, setAnimOpen] = useState(false); // drives slide+fade
   useEffect(() => {
-    if (!open) return;
+    if (open) {
+      setPresent(true);
+      // next frame trigger opening animation
+      requestAnimationFrame(() => setAnimOpen(true));
+    } else {
+      // start exit animation
+      setAnimOpen(false);
+      const t = setTimeout(() => setPresent(false), 220); // matches transition
+      return () => clearTimeout(t);
+    }
+  }, [open]);
+
+  // Prevent background scroll when sheet is visually present (mobile-friendly)
+  useEffect(() => {
+    if (!present) return;
     const orig = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = orig; };
-  }, [open]);
+  }, [present]);
 
   // Escape key to close
   useEffect(() => {
-    if (!open) return;
+    if (!present) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose?.();
@@ -45,14 +62,14 @@ export default function CategoryBottomSheet({ open, category, merchants, onClose
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [open, onClose]);
+  }, [present, onClose]);
 
   // Focus for accessibility
   useEffect(() => {
-    if (open && ref.current) {
+    if (animOpen && ref.current) {
       ref.current.focus();
     }
-  }, [open]);
+  }, [animOpen]);
 
   const list = useMemo(() => {
     const filtered = category ? merchants.filter(m => (m.category || '') === category) : merchants;
@@ -62,15 +79,19 @@ export default function CategoryBottomSheet({ open, category, merchants, onClose
   const handleStart = useCallback((clientY: number) => {
     startY.current = clientY;
     dragDirectionRef.current = null;
+    moveSamplesRef.current = [{ y: clientY, t: performance.now() }];
   }, []);
   const handleMove = useCallback((clientY: number) => {
     if (startY.current == null) return;
     const delta = clientY - startY.current; // positive = dragging down
     if (Math.abs(delta) < 4) return;
     dragDirectionRef.current = delta < 0 ? 'up' : 'down';
-    // Allow a small upward drag visual bounce when in peek state
+    moveSamplesRef.current.push({ y: clientY, t: performance.now() });
+    // keep only recent samples (last 8 / 180ms)
+    const cutoff = performance.now() - 180;
+    moveSamplesRef.current = moveSamplesRef.current.filter(s => s.t >= cutoff);
     if (delta < 0) {
-      // Limit upward visual drag to -60px
+      // Limit upward visual drag to -60px (bounce)
       setDragY(Math.max(delta, -60));
     } else {
       setDragY(delta);
@@ -79,21 +100,36 @@ export default function CategoryBottomSheet({ open, category, merchants, onClose
   const handleEnd = useCallback(() => {
     if (startY.current == null) return;
     const delta = dragY;
+    const samples = moveSamplesRef.current;
+    const last = samples[samples.length - 1];
+    const refSample = [...samples].findLast?.(s => last && (last.t - s.t) >= 40) || samples[0];
+    let velocity = 0; // px per ms (+down, -up)
+    if (last && refSample && last !== refSample) {
+      velocity = (last.y - refSample.y) / (last.t - refSample.t);
+    }
+
+    const fastDown = velocity > 1.1; // flick down
+    const fastUp = velocity < -1.0;  // flick up
+
     if (dragDirectionRef.current === 'up') {
-      if (delta < -40 && sheetState === 'peek') {
-        setSheetState('full');
+      if (fastUp || delta < -50) {
+        if (sheetState === 'peek') setSheetState('full');
       }
     } else if (dragDirectionRef.current === 'down') {
-      if (delta > 100) {
+      if (fastDown || delta > 130) {
         if (sheetState === 'full') {
           setSheetState('peek');
         } else {
           onClose?.();
         }
+      } else if (delta > 80 && sheetState === 'full') {
+        // medium drag without flick collapses to peek
+        setSheetState('peek');
       }
     }
     startY.current = null;
     dragDirectionRef.current = null;
+    moveSamplesRef.current = [];
     setDragY(0);
   }, [dragY, sheetState, onClose]);
 
@@ -102,11 +138,17 @@ export default function CategoryBottomSheet({ open, category, merchants, onClose
     if (open) setSheetState('peek');
   }, [category, open]);
 
-  if (!open) return null;
+  if (!present) return null;
 
   const isFull = sheetState === 'full';
   const baseHeightClass = isFull ? 'h-[70vh]' : 'h-[32vh]';
   const contentScrollable = 'overflow-y-auto flex-1 px-3 pb-[env(safe-area-inset-bottom)]';
+  const show = animOpen; // drives opacity / slide for backdrop + sheet
+  const baseTranslate = show ? 0 : 40; // px
+  const backdropStyle: React.CSSProperties = {
+    opacity: show ? 1 : 0,
+    transition: 'opacity 200ms ease'
+  };
 
   return (
     <div className="fixed inset-0 z-[60]" aria-modal="true" role="dialog" aria-label={category ? `${category} merchants` : 'Merchants'}>
@@ -115,7 +157,8 @@ export default function CategoryBottomSheet({ open, category, merchants, onClose
         aria-label="Close"
         role="button"
         tabIndex={-1}
-        className="absolute inset-0 bg-black/20 backdrop-blur-[1px]"
+        className="absolute inset-0 bg-black/30 backdrop-blur-[1px]"
+        style={backdropStyle}
         onClick={onClose}
       />
       {/* Sheet */}
@@ -124,8 +167,9 @@ export default function CategoryBottomSheet({ open, category, merchants, onClose
         tabIndex={-1}
         className={`absolute left-0 right-0 bottom-0 ${baseHeightClass} max-h-[90vh] flex flex-col rounded-t-3xl bg-black/85 text-white backdrop-blur-md shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-white/40 transition-[height] duration-200 ease`}
         style={{
-          transform: `translateY(${dragY}px)`,
-          transition: startY.current ? 'none' : 'transform 160ms ease'
+          transform: `translateY(${baseTranslate + dragY}px)`,
+          opacity: show ? 1 : 0,
+          transition: startY.current ? 'none' : 'transform 200ms cubic-bezier(.22,.7,.3,1), opacity 200ms ease, height 200ms ease'
         }}
       >
         <div
