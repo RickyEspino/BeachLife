@@ -157,6 +157,31 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
           </div>
         )}
 
+        {showUserLocation && (
+          <button
+            type="button"
+            aria-label="Locate me"
+            onClick={() => {
+              if (!('geolocation' in navigator)) return;
+              navigator.geolocation.getCurrentPosition((pos) => {
+                const { latitude, longitude, accuracy } = pos.coords;
+                setUserPos({ latitude, longitude, accuracy });
+                setViewState(v => ({ ...v, latitude, longitude }));
+                setGeoDenied(false);
+              }, (err) => {
+                if (err.code === err.PERMISSION_DENIED) setGeoDenied(true);
+              }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+            }}
+            className="group absolute right-3 bottom-[calc(72px+var(--safe-bottom))] h-11 w-11 rounded-full bg-white shadow-md border border-gray-200 flex items-center justify-center active:scale-95 transition focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <span className="relative block h-6 w-6">
+              <span className="absolute inset-0 rounded-full border-2 border-blue-500/70 group-hover:border-blue-600 transition" />
+              <span className="absolute inset-1 rounded-full border border-blue-400/60 group-hover:border-blue-500" />
+              <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-blue-600" />
+            </span>
+          </button>
+        )}
+
         {/* Custom user avatar marker at user position (single fetch, no continuous tracking) */}
         {showUserLocation && userPos && userAvatarUrl && (
           <Marker longitude={userPos.longitude} latitude={userPos.latitude} anchor="center">
