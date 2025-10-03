@@ -1,5 +1,6 @@
 // src/app/merchant/page.tsx
 import { redirect } from "next/navigation";
+import Link from 'next/link';
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
 import DoublePointsToggle from './toggle-double-points';
 
@@ -55,19 +56,19 @@ export default async function MerchantDashboardPage() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <a
+            <Link
               href="/merchant/onboarding"
               className="rounded-lg border px-4 py-2 font-medium hover:bg-gray-50"
             >
               Edit details
-            </a>
+            </Link>
             {/* NEW: Register purchase button */}
-            <a
+            <Link
               href="/merchant/register"
               className="rounded-lg bg-black text-white px-4 py-2 font-medium text-center"
             >
               Register purchase
-            </a>
+            </Link>
             <DoublePointsToggle merchantId={merchant.id} />
           </div>
         </div>
@@ -78,10 +79,10 @@ export default async function MerchantDashboardPage() {
             <div className="mt-1 font-mono text-sm">{merchant.id}</div>
           </div>
 
-          <a href="/me" className="rounded-lg border p-4 hover:bg-gray-50">
+          <Link href="/me" className="rounded-lg border p-4 hover:bg-gray-50">
             <div className="text-sm text-gray-500">Switch to</div>
             <div className="mt-1 font-medium">User dashboard</div>
-          </a>
+          </Link>
 
           <form action="/auth/signout" method="post" className="rounded-lg border p-4">
             <div className="text-sm text-gray-500">Session</div>

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 // Constants
-const BOSS_MAX = 100;
+const BOSS_MAX = 1000;
 const PLAYER_MAX = 100;
 const TIMER_DRAIN_PER_SEC = 12;
 const BLOCK_DURATION_MS = 1200;

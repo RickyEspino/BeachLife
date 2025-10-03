@@ -51,7 +51,8 @@ const DURATIONS: { label: string; ms: number }[] = [
   { label: '24h', ms: 24 * 60 * 60 * 1000 },
 ];
 
-export default function DoublePointsToggle({ merchantId }: { merchantId: string }) {
+export default function DoublePointsToggle({ merchantId }: { merchantId: string | number }) {
+  const id = String(merchantId);
   const [enabled, setEnabled] = useState(false);
   const [_promosState, setPromosState] = useState<Promo[]>([]); // underscore to silence unused var lint
   const [durationMs, setDurationMs] = useState<number>(DURATIONS[1].ms); // default 1h
@@ -60,7 +61,7 @@ export default function DoublePointsToggle({ merchantId }: { merchantId: string 
   useEffect(() => {
   const ps = readPromos();
     setPromosState(ps); // Update to use _promosState
-    const found = ps.find(p => p.id === merchantId);
+  const found = ps.find(p => p.id === id);
     setEnabled(!!found);
     if (found) setRemaining(found.expiresAt - Date.now());
   }, [merchantId]);
@@ -71,7 +72,7 @@ export default function DoublePointsToggle({ merchantId }: { merchantId: string 
       if (e.key === STORAGE_KEY) {
         const ps = readPromos();
   setPromosState(ps);
-        const found = ps.find(p => p.id === merchantId);
+  const found = ps.find(p => p.id === id);
         setEnabled(!!found);
       }
     };
@@ -79,7 +80,7 @@ export default function DoublePointsToggle({ merchantId }: { merchantId: string 
       const detail = (e as CustomEvent).detail as { promos?: Promo[] } | undefined;
       if (detail?.promos) {
   setPromosState(detail.promos);
-        const found = detail.promos.find(p => p.id === merchantId);
+  const found = detail.promos.find(p => p.id === id);
         setEnabled(!!found);
       }
     };
@@ -94,39 +95,39 @@ export default function DoublePointsToggle({ merchantId }: { merchantId: string 
   // Remaining time ticker
   useEffect(() => {
     if (!enabled) return;
-    const id = setInterval(() => {
+    const intervalId = setInterval(() => {
       const current = readPromos();
-      const found = current.find(p => p.id === merchantId);
+      const found = current.find(p => p.id === id);
       if (!found) { setEnabled(false); setRemaining(0); return; }
       const rem = found.expiresAt - Date.now();
       setRemaining(rem > 0 ? rem : 0);
       if (rem <= 0) setEnabled(false);
     }, 1000);
-    return () => clearInterval(id);
+    return () => clearInterval(intervalId);
   }, [enabled, merchantId]);
 
   const toggle = useCallback(() => {
   setPromosState(prev => {
       const now = Date.now();
       let cleaned = prev.filter(p => p.expiresAt > now);
-      const exists = cleaned.some(p => p.id === merchantId);
+  const exists = cleaned.some(p => p.id === id);
       if (exists) {
-        cleaned = cleaned.filter(p => p.id !== merchantId);
+  cleaned = cleaned.filter(p => p.id !== id);
         writePromos(cleaned);
         // Fire-and-forget server delete
-        fetch(`/api/merchant-promos?merchantId=${encodeURIComponent(merchantId)}`, { method: 'DELETE' }).catch(() => {});
+  fetch(`/api/merchant-promos?merchantId=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
         setEnabled(false);
         setRemaining(0);
         return cleaned;
       } else {
-        const next: Promo = { id: merchantId, expiresAt: now + durationMs };
+  const next: Promo = { id, expiresAt: now + durationMs };
         const updated = [...cleaned, next];
         writePromos(updated);
         // Fire-and-forget server upsert
         fetch('/api/merchant-promos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ merchantId, durationMs })
+          body: JSON.stringify({ merchantId: id, durationMs })
         }).catch(() => {});
         setEnabled(true);
         setRemaining(durationMs);
@@ -142,12 +143,12 @@ export default function DoublePointsToggle({ merchantId }: { merchantId: string 
       // Extend/update current promo
   setPromosState(prev => {
         const now = Date.now();
-        const updated = prev.map(p => p.id === merchantId ? { ...p, expiresAt: now + value } : p);
+  const updated = prev.map(p => p.id === id ? { ...p, expiresAt: now + value } : p);
         writePromos(updated);
         fetch('/api/merchant-promos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ merchantId, durationMs: value })
+          body: JSON.stringify({ merchantId: id, durationMs: value })
         }).catch(() => {});
         setRemaining(value);
         return updated;
