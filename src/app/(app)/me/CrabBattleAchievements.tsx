@@ -9,12 +9,37 @@ export default async function CrabBattleAchievements() {
   }
 
   // Aggregate stats
-  const { data: aggRows } = await supabase
-    .from('crab_battles')
-    .select('victory, duration_seconds, hits, crits, blocks, max_combo, total_damage, dps, created_at')
+  // Prefer unified quick_battle_runs; fallback to legacy view if unavailable
+  interface AggRow { victory: boolean | null; duration_seconds: number | null; hits: number | null; crits: number | null; blocks: number | null; max_combo: number | null; total_damage: number | null; dps: number | null; started_at?: string; created_at?: string }
+  let aggRows: AggRow[] | null = null;
+  const { data: runsData, error: runsErr } = await supabase
+    .from('quick_battle_runs')
+    .select('victory, duration_seconds, hits, crits, blocks, max_combo, total_damage, dps, started_at, battle_type')
     .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
-    .limit(100); // cap
+    .eq('battle_type', 'king_crab')
+    .order('started_at', { ascending: false })
+    .limit(120);
+  if (!runsErr && runsData) {
+    aggRows = runsData.map(r => ({
+      victory: r.victory,
+      duration_seconds: r.duration_seconds,
+      hits: r.hits,
+      crits: r.crits,
+      blocks: r.blocks,
+      max_combo: r.max_combo,
+      total_damage: r.total_damage,
+      dps: r.dps,
+      created_at: r.started_at,
+    }));
+  } else {
+    const { data: legacy } = await supabase
+      .from('crab_battles')
+      .select('victory, duration_seconds, hits, crits, blocks, max_combo, total_damage, dps, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(100);
+    aggRows = legacy || [];
+  }
 
   if (!aggRows || !aggRows.length) {
     return (
@@ -31,17 +56,17 @@ export default async function CrabBattleAchievements() {
   let totalDps = 0;
   let dpsSamples = 0;
   let highestCombo = 0;
-  let totalBattles = aggRows.length;
+  const totalBattles = aggRows.length;
   let totalDamage = 0;
   for (const r of aggRows) {
     if (r.victory) {
       victories++;
-      if (r.duration_seconds < fastest) fastest = r.duration_seconds;
+      if (typeof r.duration_seconds === 'number' && r.duration_seconds < fastest) fastest = r.duration_seconds;
     }
-    if (r.dps > bestDps) bestDps = r.dps;
-    if (r.dps) { totalDps += r.dps; dpsSamples++; }
-    if (r.max_combo > highestCombo) highestCombo = r.max_combo;
-    totalDamage += r.total_damage || 0;
+    if (typeof r.dps === 'number' && r.dps > bestDps) bestDps = r.dps;
+    if (typeof r.dps === 'number') { totalDps += r.dps; dpsSamples++; }
+    if (typeof r.max_combo === 'number' && r.max_combo > highestCombo) highestCombo = r.max_combo;
+    totalDamage += (r.total_damage || 0) ?? 0;
   }
   const avgDps = dpsSamples ? totalDps / dpsSamples : 0;
 
@@ -86,12 +111,18 @@ export default async function CrabBattleAchievements() {
       <div>
         <h4 className="font-medium mb-2 text-sm">Recent Battles</h4>
         <div className="space-y-1 text-xs font-mono">
-          {recent.map((r, i) => (
-            <div key={i} className="flex items-center justify-between rounded bg-gray-50 px-2 py-1">
-              <span className="truncate">{r.victory ? 'Win' : 'Loss'} · {r.duration_seconds.toFixed(1)}s · {r.max_combo}x · {r.dps.toFixed(1)} DPS</span>
-              <span className="text-gray-400">{new Date(r.created_at).toLocaleTimeString()}</span>
-            </div>
-          ))}
+          {recent.map((r, i) => {
+            const dur = typeof r.duration_seconds === 'number' ? r.duration_seconds.toFixed(1) : '—';
+            const combo = typeof r.max_combo === 'number' ? r.max_combo : '—';
+            const dpsVal = typeof r.dps === 'number' ? r.dps.toFixed(1) : '—';
+            const ts = r.created_at ? new Date(r.created_at).toLocaleTimeString() : '';
+            return (
+              <div key={i} className="flex items-center justify-between rounded bg-gray-50 px-2 py-1">
+                <span className="truncate">{r.victory ? 'Win' : 'Loss'} · {dur}s · {combo}x · {dpsVal} DPS</span>
+                <span className="text-gray-400">{ts}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -1,48 +1,55 @@
 import { createSupabaseServerClient } from '@/lib/supabase/serverClient';
+import React from 'react';
 
 export default async function Page() {
 	const supabase = createSupabaseServerClient();
 
 	// Fastest victories (distinct users best time)
-	const { data: victoryRows } = await supabase
-		.from('crab_battles')
-		.select('user_id, duration_seconds, created_at, profiles(username, avatar_url)')
-		.eq('victory', true)
-		.order('duration_seconds', { ascending: true })
-		.limit(50);
+		interface VictoryRow { user_id: string | null; duration_seconds: number | null; started_at: string | null; victory: boolean | null; battle_type: string | null; profiles: { username: string | null; avatar_url: string | null } | null }
+		const { data: victoryRows } = await supabase
+			.from('quick_battle_runs')
+			.select('user_id, duration_seconds, started_at, victory, battle_type, profiles(username, avatar_url)')
+			.eq('battle_type', 'king_crab')
+			.eq('victory', true)
+			.not('duration_seconds', 'is', null)
+			.order('duration_seconds', { ascending: true })
+			.limit(60) as { data: VictoryRow[] | null };
 
 	// Aggregate per user best time & best DPS (client side reduce for simplicity)
 	const bestByUser: Record<string, { username: string; avatar_url: string | null; bestTime: number; when: string; }>= {};
-	(victoryRows||[]).forEach(r => {
-		if (!r.user_id || typeof r.duration_seconds !== 'number') return;
-		const u = r.user_id;
-		const username = (r as any).profiles?.username || 'Player';
-		const avatar_url = (r as any).profiles?.avatar_url || null;
-		if (!bestByUser[u] || r.duration_seconds < bestByUser[u].bestTime) {
-			bestByUser[u] = { username, avatar_url, bestTime: r.duration_seconds, when: r.created_at };
-		}
-	});
+  (victoryRows||[]).forEach(r => {
+    if (!r.user_id || r.duration_seconds == null) return;
+    const u = r.user_id;
+    const username = r.profiles?.username || 'Player';
+    const avatar_url = r.profiles?.avatar_url || null;
+    if (!bestByUser[u] || r.duration_seconds < bestByUser[u].bestTime) {
+      bestByUser[u] = { username, avatar_url, bestTime: r.duration_seconds, when: r.started_at || new Date().toISOString() };
+    }
+  });
 	const fastest = Object.entries(bestByUser)
 		.map(([user_id, v]) => ({ user_id, ...v }))
 		.sort((a,b)=> a.bestTime - b.bestTime)
 		.slice(0, 10);
 
 	// Best DPS (top single-fight DPS)
-	const { data: dpsRows } = await supabase
-		.from('crab_battles')
-		.select('user_id, dps, victory, profiles(username, avatar_url)')
-		.order('dps', { ascending: false })
-		.limit(30);
-	const bestDps: Record<string, { username: string; avatar_url: string | null; dps: number; }>= {};
-	(dpsRows||[]).forEach(r => {
-		if (!r.user_id || typeof r.dps !== 'number') return;
-		const u = r.user_id;
-		const username = (r as any).profiles?.username || 'Player';
-		const avatar_url = (r as any).profiles?.avatar_url || null;
-		if (!bestDps[u] || r.dps > bestDps[u].dps) {
-			bestDps[u] = { username, avatar_url, dps: r.dps };
-		}
-	});
+		interface DpsRow { user_id: string | null; dps: number | null; victory: boolean | null; battle_type: string | null; profiles: { username: string | null; avatar_url: string | null } | null }
+		const { data: dpsRows } = await supabase
+			.from('quick_battle_runs')
+			.select('user_id, dps, victory, battle_type, profiles(username, avatar_url)')
+			.eq('battle_type', 'king_crab')
+			.not('dps', 'is', null)
+			.order('dps', { ascending: false })
+			.limit(50) as { data: DpsRow[] | null };
+		const bestDps: Record<string, { username: string; avatar_url: string | null; dps: number; }>= {};
+		(dpsRows||[]).forEach(r => {
+			if (!r.user_id || r.dps == null) return;
+			const u = r.user_id;
+			const username = r.profiles?.username || 'Player';
+			const avatar_url = r.profiles?.avatar_url || null;
+			if (!bestDps[u] || r.dps > bestDps[u].dps) {
+				bestDps[u] = { username, avatar_url, dps: r.dps };
+			}
+		});
 	const topDps = Object.entries(bestDps)
 		.map(([user_id, v]) => ({ user_id, ...v }))
 		.sort((a,b)=> b.dps - a.dps)
@@ -66,7 +73,8 @@ export default async function Page() {
 	);
 }
 
-function Leaderboard({ title, subtitle, cols, rows, empty }:{ title:string; subtitle:string; cols:string[]; rows:any[][]; empty:string; }) {
+type LeaderboardRow = (string | number | React.ReactNode)[];
+function Leaderboard({ title, subtitle, cols, rows, empty }:{ title:string; subtitle:string; cols:string[]; rows:LeaderboardRow[]; empty:string; }) {
 	return (
 		<div className="rounded-2xl border bg-white/80 shadow overflow-hidden">
 			<div className="px-5 pt-5 pb-3 border-b bg-white/60">
