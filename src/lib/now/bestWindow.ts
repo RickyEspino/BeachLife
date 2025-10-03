@@ -13,6 +13,7 @@ export interface TimeWindow {
 export interface HourlyCondition {
   time: string; // ISO format
   tempC: number;
+  uv: number;
   precipProb: number;
   windKph: number;
   cloudCover: number;
@@ -43,8 +44,9 @@ export function computeBestWindow(
     endTime.setHours(endTime.getHours() + 1); // End of last hour
 
     // Calculate average conditions for this window
-    const avgTemp = windowHours.reduce((sum, h) => sum + h.tempC, 0) / windowSize;
-    const avgPrecip = windowHours.reduce((sum, h) => sum + h.precipProb, 0) / windowSize;
+  const avgTemp = windowHours.reduce((sum, h) => sum + h.tempC, 0) / windowSize;
+  const avgUV = windowHours.reduce((sum, h) => sum + h.uv, 0) / windowSize;
+  const avgPrecip = windowHours.reduce((sum, h) => sum + h.precipProb, 0) / windowSize;
     const avgWind = windowHours.reduce((sum, h) => sum + h.windKph, 0) / windowSize;
     const avgCloud = windowHours.reduce((sum, h) => sum + h.cloudCover, 0) / windowSize;
 
@@ -63,7 +65,16 @@ export function computeBestWindow(
       score += 5;
     }
 
-    // UV scoring removed
+    // UV scoring (moderate best)
+    if (avgUV >= 3 && avgUV <= 7) {
+      score += 25; reasons.push("moderate UV");
+    } else if (avgUV < 3) {
+      score += 15; reasons.push("low UV");
+    } else if (avgUV > 10) {
+      score += 5; // very high
+    } else {
+      score += 10;
+    }
 
     // Precipitation scoring
     if (avgPrecip < 10) {

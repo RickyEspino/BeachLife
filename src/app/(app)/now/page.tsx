@@ -112,12 +112,12 @@ export default async function NowPage() {
   // Default location placeholder (could be user-configurable later)
   const lat = 34.0195; // Santa Monica approx
   const lon = -118.4912;
-  let weather: { tempC: number; precipProb: number; windKph: number; cloudCover: number; condition: string } | null = null;
-  let hourlyData: Array<{ time: string; tempC: number; precipProb: number; windKph: number; cloudCover: number }> = [];
+  let weather: { tempC: number; uv: number; precipProb: number; windKph: number; windDir: number; humidity: number; cloudCover: number; condition: string; aqi?: number; pollenLevel?: string } | null = null;
+  let hourlyData: Array<{ time: string; tempC: number; uv: number; precipProb: number; windKph: number; cloudCover: number }> = [];
   
   try {
     const weatherRes = await fetch(
-  `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,cloud_cover,precipitation,wind_speed_10m&hourly=temperature_2m,precipitation_probability,wind_speed_10m,cloud_cover&forecast_days=1`,
+  `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,cloud_cover,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m&hourly=temperature_2m,uv_index,precipitation_probability,wind_speed_10m,cloud_cover,relative_humidity_2m&forecast_days=1`,
       { next: { revalidate: 600 } }
     );
     if (weatherRes.ok) {
@@ -125,31 +125,73 @@ export default async function NowPage() {
       const current = data.current;
       const hourly = data.hourly;
       
-  // Find current hour index for precip prob
+      // Find current hour index for uv / precip prob
+      let uv = 0;
       let precipProb = 0;
       if (hourly?.time && Array.isArray(hourly.time)) {
         const nowIso = new Date().toISOString().slice(0, 13); // yyyy-mm-ddThh
         const idx = hourly.time.findIndex((t: string) => t.startsWith(nowIso));
         if (idx !== -1) {
+          uv = Number(hourly.uv_index?.[idx] ?? 0);
           precipProb = Number(hourly.precipitation_probability?.[idx] ?? 0);
         }
 
-        // Build hourly data for best window calculation (uv removed)
+        // Build hourly data for best window calculation
         hourlyData = hourly.time.map((time: string, i: number) => ({
           time,
-            tempC: Number(hourly.temperature_2m?.[i] ?? 0),
-            precipProb: Number(hourly.precipitation_probability?.[i] ?? 0),
-            windKph: Number(hourly.wind_speed_10m?.[i] ?? 0),
-            cloudCover: Number(hourly.cloud_cover?.[i] ?? 0),
+          tempC: Number(hourly.temperature_2m?.[i] ?? 0),
+          uv: Number(hourly.uv_index?.[i] ?? 0),
+          precipProb: Number(hourly.precipitation_probability?.[i] ?? 0),
+          windKph: Number(hourly.wind_speed_10m?.[i] ?? 0),
+          cloudCover: Number(hourly.cloud_cover?.[i] ?? 0),
         }));
       }
       
+      // Secondary fetch: Air Quality (US AQI) + optional pollen (graceful fallback)
+      let aqi: number | undefined;
+      let pollenLevel: string | undefined;
+      try {
+        const aqiRes = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=us_aqi&forecast_days=1`, { next: { revalidate: 600 } });
+        if (aqiRes.ok) {
+          const aqiData = await aqiRes.json();
+            const hTimes: string[] = aqiData.hourly?.time || [];
+            const hAqi: number[] = aqiData.hourly?.us_aqi || [];
+            const nowIso2 = new Date().toISOString().slice(0,13);
+            const aIdx = hTimes.findIndex(t => t.startsWith(nowIso2));
+            if (aIdx !== -1) aqi = Number(hAqi[aIdx]);
+        }
+      } catch {}
+      try {
+        // Pollen attempt (may not be supported for all locales)
+        const pollenRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=grass_pollen,tree_pollen,weed_pollen&forecast_days=1`, { next: { revalidate: 10800 } });
+        if (pollenRes.ok) {
+          const pData = await pollenRes.json();
+          const pHour = pData.hourly?.time || [];
+          const nowIso3 = new Date().toISOString().slice(0,13);
+          const pIdx = pHour.findIndex((t: string) => t.startsWith(nowIso3));
+          if (pIdx !== -1) {
+            const gp = Number(pData.hourly?.grass_pollen?.[pIdx] ?? 0);
+            const tp = Number(pData.hourly?.tree_pollen?.[pIdx] ?? 0);
+            const wp = Number(pData.hourly?.weed_pollen?.[pIdx] ?? 0);
+            const avg = (gp + tp + wp) / 3;
+            if (!isNaN(avg)) {
+              pollenLevel = avg < 20 ? 'Low' : avg < 60 ? 'Moderate' : 'High';
+            }
+          }
+        }
+      } catch {}
+
       weather = {
         tempC: Number(current.temperature_2m),
+        uv,
         precipProb,
         windKph: Number(current.wind_speed_10m ?? 0),
+        windDir: Number(current.wind_direction_10m ?? 0),
+        humidity: Number(current.relative_humidity_2m ?? 0),
         cloudCover: Number(current.cloud_cover ?? 0),
         condition: mapWeatherCode(current.weather_code),
+        aqi,
+        pollenLevel,
       };
     }
   } catch {
@@ -158,12 +200,14 @@ export default async function NowPage() {
 
   const beachScore = weather ? computeBeachScore({
     tempC: weather.tempC,
+    uv: weather.uv,
     precipProb: weather.precipProb,
     windKph: weather.windKph,
     cloudCover: weather.cloudCover,
   }) : null;
   const advice = weather ? buildWeatherAdvice({
     tempC: weather.tempC,
+    uv: weather.uv,
     precipProb: weather.precipProb,
     windKph: weather.windKph,
     cloudCover: weather.cloudCover,
@@ -188,6 +232,7 @@ export default async function NowPage() {
   const activitySuggestions = weather ? getActivitySuggestions(
     {
       tempC: weather.tempC,
+      uv: weather.uv,
       precipProb: weather.precipProb,
       windKph: weather.windKph,
       cloudCover: weather.cloudCover,
@@ -296,6 +341,10 @@ export default async function NowPage() {
           <ConditionsBar
             tempC={weather.tempC}
             windKph={weather.windKph}
+            windDirDeg={weather.windDir}
+            humidity={weather.humidity}
+            aqi={weather.aqi}
+            pollenLevel={weather.pollenLevel}
             condition={weather.condition}
             beachScore={beachScore.score}
           />
