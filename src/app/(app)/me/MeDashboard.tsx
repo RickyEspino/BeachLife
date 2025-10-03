@@ -246,6 +246,7 @@ function ProfilePanel({
 }) {
   // Lazy import to avoid SSR geolocation warnings
   const LocationShareToggle = dynamic(() => import('@/components/LocationShareToggle'), { ssr: false });
+  const CrabBattleAchievements = dynamic(() => import('./CrabBattleAchievements'), { ssr: false });
   return (
     <div className="grid gap-4">
       {/* Avatar + Admin badge row */}
@@ -297,6 +298,11 @@ function ProfilePanel({
 
       <div className="rounded-xl border p-4 space-y-3">
   <LocationShareToggle initialShared={shareLocation} />
+      </div>
+
+      {/* Achievements Section */}
+      <div>
+        <CrabBattleAchievements />
       </div>
     </div>
   );

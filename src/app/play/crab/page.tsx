@@ -427,6 +427,32 @@ export default function Page() {
     }
   }, [bossHp, playerHp, victoryAt, defeatAt]);
 
+  // One-time log to API when game ends
+  const loggedRef = useRef(false);
+  useEffect(() => {
+    if (loggedRef.current) return;
+    if (!(bossHp <= 0 || playerHp <= 0)) return;
+    loggedRef.current = true;
+    const end = performance.now();
+    const elapsed = (end - statsRef.current.start) / 1000;
+    const payload = {
+      victory: bossHp <= 0 && playerHp > 0,
+      duration_seconds: Number(elapsed.toFixed(2)),
+      hits: statsRef.current.hits,
+      crits: statsRef.current.crits,
+      blocks: statsRef.current.blocks,
+      max_combo: statsRef.current.maxCombo,
+      total_damage: statsRef.current.totalDamage,
+      dps: Number((statsRef.current.totalDamage / (elapsed || 1)).toFixed(2))
+    };
+    // fire and forget
+    fetch('/api/crab-battle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(() => {});
+  }, [bossHp, playerHp]);
+
   // Passive combo charge decay
   useEffect(() => {
     if (!comboCharge) return;
