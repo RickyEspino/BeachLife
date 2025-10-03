@@ -49,8 +49,23 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
     fabRef.current?.focus();
   }, []);
 
+  // Set CSS --vh for accurate mobile viewport height (excluding browser UI)
+  useEffect(() => {
+    const setVh = () => {
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    };
+    setVh();
+    window.addEventListener('resize', setVh);
+    window.addEventListener('orientationchange', setVh);
+    return () => {
+      window.removeEventListener('resize', setVh);
+      window.removeEventListener('orientationchange', setVh);
+    };
+  }, []);
+
   return (
-    <div className="relative h-[100dvh] w-full bg-black">
+  <div className="relative w-full bg-black" style={{ height: 'calc(var(--vh, 1vh) * 100)' }}>
       <ReelsFeed initial={initial} initialNextCursor={initialNextCursor} />
 
       {/* Creation actions */}

@@ -115,7 +115,7 @@ export default function ReelsFeed({ initial, initialNextCursor }: Props) {
   }, []);
 
   return (
-  <div className="relative h-full min-h-screen w-full overflow-y-auto snap-y snap-mandatory scrollbar-none bg-black overscroll-contain">
+  <div className="relative w-full overflow-y-auto snap-y snap-mandatory scrollbar-none bg-black overscroll-contain" style={{ height: 'calc(var(--vh, 1vh) * 100)' }}>
       {items.map(item => (
         <ReelCard key={item.id} item={item} onToggleLike={handleToggleLike} liking={likingIds.has(item.id)} />
       ))}

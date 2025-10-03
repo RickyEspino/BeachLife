@@ -26,7 +26,7 @@ export default function ReelCard({ item, onToggleLike, liking }: Props) {
   const liked = !!item.liked;
   const likeCount = item.likeCount;
   return (
-    <article className="relative h-[100dvh] w-full flex-shrink-0 snap-start overflow-hidden bg-black">
+  <article className="relative w-full flex-shrink-0 snap-start overflow-hidden bg-black" style={{ height: 'calc(var(--vh, 1vh) * 100)' }}>
       <Image
         src={item.imageUrl}
         alt={item.caption || 'BeachLife reel'}
