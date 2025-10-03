@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, { Marker, Popup, ViewState, MapRef } from 'react-map-gl/mapbox';
 import NextImage from 'next/image';
@@ -22,6 +21,8 @@ export type MerchantPin = BasePin & {
   category?: string;
 };
 
+export type MerchantPromo = { id: string; expiresAt: number };
+
 const FALLBACK_BEACHES: Beach[] = [
   // Modest geographic spread — could be replaced with real seed beaches
   { id: 'santa-monica', name: 'Santa Monica Beach', latitude: 34.0195, longitude: -118.4912 },
@@ -37,6 +38,7 @@ type Props = {
   showUserLocation?: boolean;
   userAvatarUrl?: string;
   sharedUsers?: Array<{ id: string; username: string; avatarUrl?: string | null; latitude: number; longitude: number; updatedAt?: string }>;
+  serverPromos?: MerchantPromo[];
 };
 
 type UnifiedPoint = {
@@ -58,7 +60,7 @@ type Cluster = {
   points: UnifiedPoint[];
 };
 
-export default function MapComponent({ merchants = [], loadError, initialView, focusId, showUserLocation = false, userAvatarUrl, sharedUsers = [] }: Props) {
+export default function MapComponent({ merchants = [], loadError, initialView, focusId, showUserLocation = false, userAvatarUrl, sharedUsers = [], serverPromos = [] }: Props) {
   const router = useRouter();
   const [mapRef, setMapRef] = useState<MapRef | null>(null);
   // Derive starting center: provided initialView > merchants centroid > fallback beaches[0]
@@ -133,6 +135,24 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
       window.removeEventListener('merchant:double-points-change', onCustom as EventListener);
     };
   }, []);
+
+  // Merge in server-provided promos (cross-device visibility)
+  useEffect(() => {
+    if (!serverPromos || serverPromos.length === 0) return;
+    const now = Date.now();
+    const active = serverPromos.filter(p => p && typeof p.id === 'string' && typeof p.expiresAt === 'number' && p.expiresAt > now);
+    if (active.length === 0) return;
+    setDoubleMeta(prev => {
+      const merged = { ...prev };
+      for (const p of active) merged[p.id] = p.expiresAt;
+      return merged;
+    });
+    setDoubleIds(prev => {
+      const set = new Set(prev);
+      for (const p of active) set.add(p.id);
+      return Array.from(set);
+    });
+  }, [serverPromos]);
   // One-shot geolocation (no UI control) — attempts once when showUserLocation is true.
   useEffect(() => {
     if (!showUserLocation) return;

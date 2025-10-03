@@ -113,6 +113,8 @@ export default function DoublePointsToggle({ merchantId }: { merchantId: string 
       if (exists) {
         cleaned = cleaned.filter(p => p.id !== merchantId);
         writePromos(cleaned);
+        // Fire-and-forget server delete
+        fetch(`/api/merchant-promos?merchantId=${encodeURIComponent(merchantId)}`, { method: 'DELETE' }).catch(() => {});
         setEnabled(false);
         setRemaining(0);
         return cleaned;
@@ -120,6 +122,12 @@ export default function DoublePointsToggle({ merchantId }: { merchantId: string 
         const next: Promo = { id: merchantId, expiresAt: now + durationMs };
         const updated = [...cleaned, next];
         writePromos(updated);
+        // Fire-and-forget server upsert
+        fetch('/api/merchant-promos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ merchantId, durationMs })
+        }).catch(() => {});
         setEnabled(true);
         setRemaining(durationMs);
         return updated;
@@ -136,6 +144,11 @@ export default function DoublePointsToggle({ merchantId }: { merchantId: string 
         const now = Date.now();
         const updated = prev.map(p => p.id === merchantId ? { ...p, expiresAt: now + value } : p);
         writePromos(updated);
+        fetch('/api/merchant-promos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ merchantId, durationMs: value })
+        }).catch(() => {});
         setRemaining(value);
         return updated;
       });
