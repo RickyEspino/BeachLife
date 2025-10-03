@@ -144,6 +144,10 @@ export default function Page() {
   const [blockCd, setBlockCd] = useState(false);
   const [strikeOn, setStrikeOn] = useState(false);
   const [soundReady, setSoundReady] = useState(false);
+  const [combatText, setCombatText] = useState<Array<{ id: number; text: string; type: 'hit' | 'crit' | 'combo' | 'block'; created: number }>>([]);
+  const comboCountRef = useRef(0);
+  const lastHitTimeRef = useRef<number>(0);
+  const nextIdRef = useRef(1);
 
   // refs to avoid stale closures
   const bossHpRef = useRef(bossHp);
@@ -261,8 +265,31 @@ export default function Page() {
 
   const handleDamage = useCallback((part: Exclude<Part, "claws">) => {
     if (bossHpRef.current <= 0 || playerHpRef.current <= 0) return;
-    setBossHp((h) => Math.max(0, h - BASE_DAMAGE[part]));
+    const now = performance.now();
+    // combo if within 900ms of last hit
+    if (now - lastHitTimeRef.current < 900) {
+      comboCountRef.current += 1;
+    } else {
+      comboCountRef.current = 1;
+    }
+    lastHitTimeRef.current = now;
+    const base = BASE_DAMAGE[part];
+    // simple crit: 20% chance
+    const isCrit = Math.random() < 0.2;
+    const dmg = isCrit ? Math.round(base * 1.6) : base;
+    setBossHp((h) => Math.max(0, h - dmg));
     flash(part);
+    // build combat text events
+    const events: Array<{ text: string; type: 'hit' | 'crit' | 'combo' } > = [];
+    if (isCrit) events.push({ text: `CRIT ${dmg}`, type: 'crit' });
+    else events.push({ text: `${dmg}`, type: 'hit' });
+    if (comboCountRef.current >= 3) {
+      events.push({ text: `${comboCountRef.current}x Combo!`, type: 'combo' });
+    }
+    setCombatText((prev) => [
+      ...prev,
+      ...events.map(e => ({ id: nextIdRef.current++, text: e.text, type: e.type, created: Date.now() }))
+    ]);
   }, [flash]);
 
   const handleBlock = useCallback(() => {
@@ -276,6 +303,8 @@ export default function Page() {
       setBlockCd(true);
       cooldownTimer.current = window.setTimeout(() => setBlockCd(false), BLOCK_COOLDOWN_MS);
     }, BLOCK_DURATION_MS);
+    // show block text
+    setCombatText(prev => [...prev, { id: nextIdRef.current++, text: 'BLOCK', type: 'block', created: Date.now() }]);
   }, [flash]);
 
   const restartGame = useCallback(() => {
@@ -306,6 +335,21 @@ export default function Page() {
   const playerPct = (playerHp / PLAYER_MAX) * 100;
   const gameOver = bossHp <= 0 || playerHp <= 0;
 
+  // Cleanup old combat text ( >1100ms )
+  useEffect(() => {
+    if (!combatText.length) return;
+    const now = Date.now();
+    const stale = combatText.filter(e => now - e.created > 1100).length > 0;
+    if (!stale) {
+      const id = setTimeout(() => {
+        const t = Date.now();
+        setCombatText(prev => prev.filter(e => t - e.created <= 1100));
+      }, 400);
+      return () => clearTimeout(id);
+    }
+    setCombatText(prev => prev.filter(e => now - e.created <= 1100));
+  }, [combatText]);
+
   return (
     <main className="fixed inset-0 bg-black text-white">
       <div className="w-full h-full">
@@ -327,6 +371,24 @@ export default function Page() {
 
           {/* ⚡ Lightning overlay */}
           <div className={`lightning pointer-events-none absolute inset-0 ${strikeOn ? "on" : ""}`} />
+
+          {/* Floating combat text */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden">
+            {combatText.map(evt => (
+              <span
+                key={evt.id}
+                className={`absolute left-1/2 top-1/2 -translate-x-1/2 select-none font-bold text-xs sm:text-sm md:text-base combat-float opacity-0
+                  ${evt.type === 'crit' ? 'text-amber-300 drop-shadow-[0_0_6px_rgba(255,191,71,0.6)]' : ''}
+                  ${evt.type === 'hit' ? 'text-red-300 drop-shadow-[0_0_4px_rgba(255,60,60,0.5)]' : ''}
+                  ${evt.type === 'combo' ? 'text-fuchsia-300 drop-shadow-[0_0_6px_rgba(255,0,200,0.5)]' : ''}
+                  ${evt.type === 'block' ? 'text-emerald-300 drop-shadow-[0_0_6px_rgba(16,185,129,0.5)]' : ''}`}
+                style={{
+                  // slight random jitter
+                  transform: `translate(-50%, -50%) translate(${(evt.id % 5 - 2) * 8}px, ${(evt.id % 7 - 3) * 4}px)`
+                }}
+              >{evt.text}</span>
+            ))}
+          </div>
 
           {/* TOP: Boss HP */}
           <div className="absolute top-4 left-0 right-0 px-4 flex items-center justify-between">
@@ -411,6 +473,14 @@ export default function Page() {
 
       {/* Animations */}
       <style jsx global>{`
+        /* Floating combat text animation */
+        .combat-float { animation: combat-float 900ms ease-out forwards; }
+        @keyframes combat-float {
+          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+          10% { opacity: 1; transform: translate(-50%, -60%) scale(1); }
+          60% { opacity: 1; transform: translate(-50%, -90%) scale(1.05); }
+          100% { opacity: 0; transform: translate(-50%, -130%) scale(1.1); }
+        }
         /* Idle motions for crab */
         #crab svg #claws {
           transform-origin: 50% 70%;
