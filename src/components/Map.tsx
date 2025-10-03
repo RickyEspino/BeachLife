@@ -58,7 +58,24 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
   const [selected, setSelected] = useState<BasePin | MerchantPin | null>(null);
   const [userPos, setUserPos] = useState<{ latitude: number; longitude: number; accuracy?: number } | null>(null);
   const [geoDenied, setGeoDenied] = useState(false);
-  // Removed auto locate effect; rely solely on GeolocateControl interaction for clarity.
+  // Auto locate (one-shot) when showUserLocation is enabled and we don't yet have a user position.
+  useEffect(() => {
+    if (!showUserLocation) return;
+    if (userPos) return; // already have position
+    if (!('geolocation' in navigator)) return;
+    const controller = new AbortController();
+    navigator.geolocation.getCurrentPosition((pos) => {
+      if (controller.signal.aborted) return;
+      const { latitude, longitude, accuracy } = pos.coords;
+      setUserPos({ latitude, longitude, accuracy });
+      setViewState(v => ({ ...v, latitude, longitude }));
+      setGeoDenied(false);
+    }, (err) => {
+      if (controller.signal.aborted) return;
+      if (err.code === err.PERMISSION_DENIED) setGeoDenied(true);
+    }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
+    return () => controller.abort();
+  }, [showUserLocation, userPos]);
 
   // Auto focus a merchant if focusId provided
   useEffect(() => {
@@ -136,7 +153,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
           </div>
         )}
 
-        {/* Using GeolocateControl's built-in indicator + accuracy circle; custom marker removed */}
+  {/* GeolocateControl still available for manual recenter & accuracy circle; we also did a one-shot auto locate above. */}
 
         {showUserLocation && geoDenied && !userPos && (
           <div className="absolute left-2 top-10 rounded bg-yellow-500/90 px-3 py-1 text-[10px] font-medium text-white" role="alert">
