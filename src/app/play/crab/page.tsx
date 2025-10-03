@@ -143,6 +143,7 @@ export default function Page() {
   const [blocked, setBlocked] = useState(false);
   const [blockCd, setBlockCd] = useState(false);
   const [strikeOn, setStrikeOn] = useState(false);
+  const [soundReady, setSoundReady] = useState(false);
 
   // refs to avoid stale closures
   const bossHpRef = useRef(bossHp);
@@ -213,7 +214,24 @@ export default function Page() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Lightning scheduler (6–14s) + thunder audio
+  // Unlock audio on first user gesture (for mobile autoplay policies)
+  useEffect(() => {
+    if (soundReady) return;
+    const handler = () => {
+      if (!soundReady) {
+        // Attempt a silent play to satisfy gesture requirement
+        const el = thunderRef.current;
+        if (el) {
+          try { el.play().then(() => { el.pause(); el.currentTime = 0; }).catch(() => {}); } catch {}
+        }
+        setSoundReady(true);
+      }
+    };
+    window.addEventListener('pointerdown', handler, { once: true });
+    return () => window.removeEventListener('pointerdown', handler);
+  }, [soundReady]);
+
+  // Lightning scheduler (6–14s) + thunder audio (gated by soundReady)
   useEffect(() => {
     let alive = true;
     const schedule = () => {
@@ -221,16 +239,17 @@ export default function Page() {
       strikeTimer.current = window.setTimeout(() => {
         if (!alive) return;
         setStrikeOn(true);
-        // Requested thunder playback pattern
-        if (thunderRef.current?.currentTime) thunderRef.current.currentTime = 0;
-        thunderRef.current?.play().catch(() => {});
+        if (soundReady) {
+          if (thunderRef.current?.currentTime) thunderRef.current.currentTime = 0;
+          thunderRef.current?.play().catch(() => {});
+        }
         window.setTimeout(() => setStrikeOn(false), 520);
         schedule();
       }, delay);
     };
     schedule();
     return () => { alive = false; if (strikeTimer.current) clearTimeout(strikeTimer.current); };
-  }, []);
+  }, [soundReady]);
 
   const flash = useCallback((id: Part) => {
     const svg = crabRef.current?.querySelector("svg");
@@ -288,14 +307,12 @@ export default function Page() {
   const gameOver = bossHp <= 0 || playerHp <= 0;
 
   return (
-    <main className="min-h-[100svh] bg-black text-white">
-      <div className="grid place-items-center w-full h-full">
+    <main className="fixed inset-0 bg-black text-white">
+      <div className="w-full h-full">
         <div
           id="kingcrab-stage"
           ref={stageRef}
-          className={`relative bg-black select-none ring-1 ring-white/10 overflow-hidden
-                      w-screen h-[100svh] md:w-full md:max-w-5xl md:h-auto md:aspect-[16/9]
-                      rounded-none md:rounded-2xl ${strikeOn ? "strike" : ""}`}
+          className={`relative bg-black select-none ring-1 ring-white/10 overflow-hidden w-full h-full ${strikeOn ? "strike" : ""}`}
         >
           {/* Background */}
           <div ref={bgRef} id="bg" className="absolute inset-0" />
@@ -381,7 +398,14 @@ export default function Page() {
           )}
 
           {/* Thunder audio (optional) */}
-          <audio ref={thunderRef} preload="auto" src="/sfx/thunder.mp3" />
+          <audio ref={thunderRef} preload="auto" src="/sfx/thunder.mp3" aria-hidden="true" />
+          {!soundReady && (
+            <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center">
+              <div className="px-3 py-1 rounded-full text-[10px] font-medium bg-white/10 backdrop-blur-sm border border-white/15 animate-pulse">
+                Tap once to enable thunder
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
