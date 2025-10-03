@@ -317,7 +317,8 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
               const expiresAt = doubleMeta[p.id] || 0;
               const now = Date.now();
               const msLeft = expiresAt ? expiresAt - now : 0;
-              const fading = is2x && expiresAt !== 0 && msLeft < 60 * 60 * 1000; // last hour
+              const fading = is2x && expiresAt !== 0 && msLeft < 60 * 60 * 1000 && msLeft >= 30 * 60 * 1000; // 60m-30m
+              const urgent = is2x && expiresAt !== 0 && msLeft < 30 * 60 * 1000 && msLeft > 0; // final 30m
               return (
                 <Marker key={p.id} longitude={p.longitude} latitude={p.latitude} anchor="bottom">
                   <div className="relative">
@@ -329,7 +330,13 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
                       🏪
                     </button>
                     {is2x && (
-                      <span className={`absolute -top-3 -right-3 rounded-full text-[10px] font-bold px-1.5 py-0.5 shadow ring-1 ring-black/10 select-none ${fading ? 'bg-gradient-to-br from-amber-500/30 to-amber-400/20 text-amber-600 animate-pulse' : 'bg-amber-500 text-white animate-pulse'}`} title={`2× Points Active${fading ? ' (ending soon)' : ''}`}>2×</span>
+                      <span
+                        className={`absolute -top-3 -right-3 rounded-full text-[10px] font-bold px-1.5 py-0.5 shadow ring-1 ring-black/10 select-none 
+                          ${urgent ? 'bg-red-600 text-white animate-[pulse_0.8s_ease-in-out_infinite]' : fading ? 'bg-gradient-to-br from-amber-500/30 to-amber-400/20 text-amber-600 animate-pulse' : 'bg-amber-500 text-white animate-pulse'}`}
+                        title={`2× Points Active${urgent ? ' (ending very soon)' : fading ? ' (ending soon)' : ''}`}
+                      >
+                        2×
+                      </span>
                     )}
                   </div>
                 </Marker>
@@ -361,19 +368,31 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
           }
           // cluster marker
           // Determine if any merchant in cluster has 2x active
-          const has2x = c.points.some(p => p.type === 'merchant' && doubleIds.includes(p.id));
+          const now = Date.now();
+          let has2x = false; let hasUrgent = false; let hasFading = false;
+          for (const pt of c.points) {
+            if (pt.type === 'merchant' && doubleIds.includes(pt.id)) {
+              has2x = true;
+              const exp = doubleMeta[pt.id] || 0;
+              if (exp) {
+                const left = exp - now;
+                if (left < 30 * 60 * 1000 && left > 0) hasUrgent = true; else if (left < 60 * 60 * 1000) hasFading = true;
+              }
+            }
+          }
           return (
             <Marker key={`cluster-${c.id}-${c.count}`} longitude={c.longitude} latitude={c.latitude} anchor="center">
               <button
                 type="button"
                 onClick={(e) => { e.preventDefault(); handleClusterClick(c); }}
-                aria-label={`Cluster with ${c.count} points${has2x ? ' including 2× promos' : ''}`}
+                aria-label={`Cluster with ${c.count} points${has2x ? hasUrgent ? ' including urgent 2× promos' : ' including 2× promos' : ''}`}
                 className="relative h-12 w-12 rounded-full bg-emerald-600/80 backdrop-blur text-white font-semibold text-sm flex items-center justify-center shadow-lg ring-2 ring-white hover:scale-105 active:scale-95 transition"
               >
                 {c.count}
                 <span className="absolute -inset-1 rounded-full animate-ping bg-emerald-400/30" aria-hidden="true" />
                 {has2x && (
-                  <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-amber-500 text-[10px] font-bold flex items-center justify-center shadow ring-1 ring-black/10">2×</span>
+                  <span className={`absolute -top-1 -right-1 h-5 w-5 rounded-full text-[10px] font-bold flex items-center justify-center shadow ring-1 ring-black/10 
+                    ${hasUrgent ? 'bg-red-600 text-white animate-[pulse_0.8s_ease-in-out_infinite]' : hasFading ? 'bg-amber-500/80 text-white animate-pulse' : 'bg-amber-500 text-white animate-pulse'}`}>2×</span>
                 )}
               </button>
             </Marker>
