@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import Supercluster from 'supercluster';
 import { useRouter } from 'next/navigation';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, { Marker, Popup, ViewState, MapRef } from 'react-map-gl/mapbox';
@@ -230,7 +231,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
     showDoubleOnly ? merchants.filter(m => doubleIds.includes(m.id)) : merchants
   ), [showDoubleOnly, merchants, doubleIds]);
 
-  // Combine merchants + shared users for clustering
+  // Combine merchants + shared users for clustering (raw points list)
   const unifiedPoints: UnifiedPoint[] = useMemo(() => {
     const ms: UnifiedPoint[] = visibleMerchants.map(m => ({ id: m.id, type: 'merchant', name: m.name, latitude: m.latitude, longitude: m.longitude, category: m.category }));
     const us: UnifiedPoint[] = sharedUsers.map(u => ({ id: `u-${u.id}`, type: 'user', name: u.username, latitude: u.latitude, longitude: u.longitude, avatarUrl: u.avatarUrl, username: u.username }));
@@ -239,77 +240,66 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
 
   const zoom = (viewState.zoom as number) || 0;
 
-  // Zoom-scaled clustering radius (in meters). Smaller at higher zoom so points "break apart".
-  const clusterRadiusMeters = useMemo(() => {
-    if (zoom < 5) return 120_000; // 120 km
-    if (zoom < 6) return 60_000;
-    if (zoom < 7) return 30_000;
-    if (zoom < 8) return 15_000;
-    if (zoom < 9) return 8_000;
-    if (zoom < 10) return 4_000;
-    if (zoom < 11) return 2_000;
-    if (zoom < 12) return 1_000;
-    if (zoom < 13) return 600;
-    if (zoom < 14) return 300;
-    if (zoom < 15) return 150;
-    if (zoom < 16) return 70;
-    return 30; // very fine at deep zoom
-  }, [zoom]);
+  // Build Supercluster index when inputs change
+  const supercluster = useMemo(() => {
+    const features = unifiedPoints.map(p => ({
+      type: 'Feature' as const,
+      properties: {
+        pointId: p.id,
+        pointType: p.type,
+      },
+      geometry: { type: 'Point' as const, coordinates: [p.longitude, p.latitude] }
+    }));
+    if (features.length === 0) return null;
+    return new Supercluster<{ pointId: string; pointType: string }>({
+      radius: 60,
+      maxZoom: 18,
+    }).load(features as any);
+  }, [unifiedPoints]);
 
-  // Haversine distance in meters
-  function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number) {
-    const R = 6371000; // Earth radius meters
-    const toRad = (d: number) => d * Math.PI / 180;
-    const dLat = toRad(bLat - aLat);
-    const dLng = toRad(bLng - aLng);
-    const lat1 = toRad(aLat);
-    const lat2 = toRad(bLat);
-    const sinDLat = Math.sin(dLat / 2);
-    const sinDLng = Math.sin(dLng / 2);
-    const a = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
+  // Derive clusters for current viewport bounds + zoom
   const clusters: Cluster[] = useMemo(() => {
-    const list: Cluster[] = [];
-    for (const p of unifiedPoints) {
-      let target: Cluster | undefined;
-      for (const c of list) {
-        const dist = distanceMeters(c.latitude, c.longitude, p.latitude, p.longitude);
-        if (dist <= clusterRadiusMeters) { target = c; break; }
-      }
-      if (target) {
-        target.points.push(p);
-        const n = target.points.length;
-        target.latitude = target.latitude + (p.latitude - target.latitude) / n;
-        target.longitude = target.longitude + (p.longitude - target.longitude) / n;
-        target.count = n;
+    if (!supercluster) return [];
+    let bounds: [number, number, number, number] | null = null;
+    try {
+      const b = mapRef?.getBounds();
+      if (b) bounds = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+    } catch {}
+    if (!bounds) bounds = [-180, -85, 180, 85];
+    const raw = supercluster.getClusters(bounds, Math.round(zoom));
+    const out: Cluster[] = [];
+    for (const f of raw) {
+      const [lng, lat] = (f.geometry as any).coordinates as [number, number];
+      const props: any = f.properties;
+      if (props.cluster) {
+        // gather leaves (cap large clusters for perf safety)
+        const leaves = supercluster.getLeaves(props.cluster_id, Math.min(1000, props.point_count));
+        const pts: UnifiedPoint[] = [];
+        for (const l of leaves) {
+          const pid = (l.properties as any).pointId;
+          const found = unifiedPoints.find(p => p.id === pid);
+          if (found) pts.push(found);
+        }
+        out.push({ id: `c-${props.cluster_id}`, latitude: lat, longitude: lng, count: props.point_count, points: pts });
       } else {
-        list.push({ id: p.id, latitude: p.latitude, longitude: p.longitude, count: 1, points: [p] });
+        const single = unifiedPoints.find(p => p.id === props.pointId);
+        if (single) out.push({ id: single.id, latitude: single.latitude, longitude: single.longitude, count: 1, points: [single] });
       }
     }
-    return list;
-  }, [unifiedPoints, clusterRadiusMeters]);
+    return out;
+  }, [supercluster, zoom, unifiedPoints, mapRef]);
 
-  // Determine if the user avatar (self) sits inside a cluster; if so compute an offset direction.
+  // Simplified self offset: if user's point is clustered with others, offset deterministically
   const selfOffset = useMemo(() => {
     if (!showUserLocation || !userPos || !userAvatarUrl) return { dx: 0, dy: 0 };
-    const lat = userPos.latitude;
-    const z = zoom || 0;
-    const metersPerPixel = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z);
-    const thresholdMeters = metersPerPixel * 50; // ~50px visual radius sum
-    const nearby = clusters.find(c => {
-      const dist = distanceMeters(c.latitude, c.longitude, userPos.latitude, userPos.longitude);
-      // Ignore cluster representing only the user itself
-      if (c.count === 1 && c.points[0].type === 'user') return false;
-      return dist < thresholdMeters;
-    });
-    if (!nearby) return { dx: 0, dy: 0 };
-    const angle = Math.atan2(userPos.latitude - nearby.latitude, userPos.longitude - nearby.longitude) || 0;
+    // We don't know the user's shared ID here (shared users passed separately). Only offset if there exists a cluster at the same lat/lng with multiple points.
+    const containing = clusters.find(c => c.count > 1 && c.points.some(p => p.type === 'user' && Math.abs(p.latitude - userPos.latitude) < 1e-5 && Math.abs(p.longitude - userPos.longitude) < 1e-5));
+    if (!containing) return { dx: 0, dy: 0 };
+    const hash = [...containing.id].reduce((a, ch) => a + ch.charCodeAt(0), 0);
+    const angle = (hash % 360) * Math.PI / 180;
     const px = 42;
     return { dx: Math.cos(angle) * px, dy: Math.sin(angle) * px };
-  }, [showUserLocation, userPos, userAvatarUrl, clusters, zoom]);
+  }, [showUserLocation, userPos, userAvatarUrl, clusters]);
 
   const handleClusterClick = (c: Cluster) => {
     // Zoom in towards cluster center to expand
