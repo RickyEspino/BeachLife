@@ -58,24 +58,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
   const [selected, setSelected] = useState<BasePin | MerchantPin | null>(null);
   const [userPos, setUserPos] = useState<{ latitude: number; longitude: number; accuracy?: number } | null>(null);
   const [geoDenied, setGeoDenied] = useState(false);
-  // Auto locate (one-shot) when showUserLocation is enabled and we don't yet have a user position.
-  useEffect(() => {
-    if (!showUserLocation) return;
-    if (userPos) return; // already have position
-    if (!('geolocation' in navigator)) return;
-    const controller = new AbortController();
-    navigator.geolocation.getCurrentPosition((pos) => {
-      if (controller.signal.aborted) return;
-      const { latitude, longitude, accuracy } = pos.coords;
-      setUserPos({ latitude, longitude, accuracy });
-      setViewState(v => ({ ...v, latitude, longitude }));
-      setGeoDenied(false);
-    }, (err) => {
-      if (controller.signal.aborted) return;
-      if (err.code === err.PERMISSION_DENIED) setGeoDenied(true);
-    }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
-    return () => controller.abort();
-  }, [showUserLocation, userPos]);
+  // Rely solely on Mapbox GeolocateControl for permission, tracking & accuracy circle.
 
   // Auto focus a merchant if focusId provided
   useEffect(() => {
@@ -165,25 +148,23 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
           <div className="pointer-events-auto absolute right-3" style={{ bottom: 'calc(72px + var(--safe-bottom))' }}>
             <div className="rounded-xl bg-white shadow-md border border-gray-200 p-1">
               <GeolocateControl
-                trackUserLocation={false}
-                showUserHeading={false}
+                trackUserLocation={true}
+                showUserHeading={true}
                 showAccuracyCircle={true}
-                positionOptions={{ enableHighAccuracy: true, timeout: 8000 }}
+                positionOptions={{ enableHighAccuracy: true, timeout: 10000 }}
                 onGeolocate={(e) => {
                   const { latitude, longitude, accuracy } = e.coords;
                   setUserPos({ latitude, longitude, accuracy });
-                  setViewState((v) => ({ ...v, latitude, longitude }));
+                  setViewState(v => ({ ...v, latitude, longitude }));
                   setGeoDenied(false);
                 }}
-                onError={(err) => {
-                  if (err.code === err.PERMISSION_DENIED) setGeoDenied(true);
-                }}
+                onError={(err) => { if (err.code === err.PERMISSION_DENIED) setGeoDenied(true); }}
               />
             </div>
           </div>
         )}
 
-        {/* Custom user avatar marker (overrides Geolocate Control's blue dot). We still rely on the control for accuracy circle & permission handling. */}
+  {/* Custom user avatar marker overrides the default blue dot; GeolocateControl supplies tracking & accuracy circle. */}
         {showUserLocation && userPos && userAvatarUrl && (
           <Marker longitude={userPos.longitude} latitude={userPos.latitude} anchor="center">
             <div className="relative -translate-y-1 -translate-x-1">
