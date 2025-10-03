@@ -21,9 +21,7 @@ export default function ReelsFeed({ initial, initialNextCursor }: Props) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const reachedEnd = !nextCursor;
 
-  const updateItem = (id: number | string, patch: Partial<ReelItem>) => {
-    setItems(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
-  };
+  // helper removed (was unused)
 
   const handleToggleLike = async (id: number | string, currentlyLiked: boolean) => {
     const numericId = typeof id === 'string' ? Number(id) : id;
@@ -117,7 +115,7 @@ export default function ReelsFeed({ initial, initialNextCursor }: Props) {
   }, []);
 
   return (
-    <div className="relative h-[100dvh] w-full overflow-y-scroll snap-y snap-mandatory scrollbar-none bg-black">
+  <div className="relative h-full min-h-screen w-full overflow-y-auto snap-y snap-mandatory scrollbar-none bg-black overscroll-contain">
       {items.map(item => (
         <ReelCard key={item.id} item={item} onToggleLike={handleToggleLike} liking={likingIds.has(item.id)} />
       ))}

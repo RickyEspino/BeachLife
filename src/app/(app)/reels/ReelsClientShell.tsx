@@ -1,6 +1,6 @@
 "use client";
 import dynamic from 'next/dynamic';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ReelItem } from '@/components/reels/ReelCard';
 
 const ReelsFeed = dynamic(() => import('@/components/reels/ReelsFeed'));
@@ -12,97 +12,98 @@ interface Props {
 }
 
 export default function ReelsClientShell({ initial, initialNextCursor }: Props) {
-  const [open, setOpen] = useState(false); // slide-over panel
-  const [panelMounted, setPanelMounted] = useState(false);
-  const [fabExpanded, setFabExpanded] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [showCreate, setShowCreate] = useState(false); // expand secondary actions
+  const [mountedCreate, setMountedCreate] = useState(false);
+  const fabRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
-  // Lazy-mount panel contents only once opened to save initial hydration cost
+  useEffect(() => { if (panelOpen) setMountedCreate(true); }, [panelOpen]);
+
+  // Close on Escape
   useEffect(() => {
-    if (open) setPanelMounted(true);
-  }, [open]);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (panelOpen) { setPanelOpen(false); fabRef.current?.focus(); }
+        else if (showCreate) { setShowCreate(false); }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [panelOpen, showCreate]);
+
+  // Focus first focusable in panel when opened
+  useEffect(() => {
+    if (!panelOpen) return;
+    const t = setTimeout(() => {
+      panelRef.current?.querySelector<HTMLElement>('button, input, textarea, select')?.focus();
+    }, 30);
+    return () => clearTimeout(t);
+  }, [panelOpen]);
 
   const handleCreated = useCallback((item: ReelItem) => {
     window.dispatchEvent(new CustomEvent('reel:created', { detail: item }));
-    setOpen(false); // close after successful post
+    setPanelOpen(false);
+    fabRef.current?.focus();
   }, []);
 
   return (
-    <div className="relative h-[100dvh] w-full bg-black overflow-hidden">
-      {/* Feed layer below nav & FAB */}
-      <div className="absolute inset-0 z-0">
-        <ReelsFeed initial={initial} initialNextCursor={initialNextCursor} />
-      </div>
+    <div className="relative h-[100dvh] w-full bg-black">
+      <ReelsFeed initial={initial} initialNextCursor={initialNextCursor} />
 
-      {/* Expanding FAB */}
-      <div className="fixed bottom-[110px] right-4 z-[55]">
-        <div className={`relative flex flex-col items-end transition-[height,width] duration-300 ease-out`}>          
-          {/* Expanded pill */}
-          <div
-            className={`mb-2 flex items-center gap-2 rounded-full border border-white/60 bg-white/80 supports-[backdrop-filter]:bg-white/60 backdrop-blur-md shadow-lg px-3 py-2 transition-all duration-300 overflow-hidden ${fabExpanded ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}
-            aria-hidden={!fabExpanded}
-          >
-            <button
-              type="button"
-              aria-label="Capture from camera"
-              disabled
-              className="group relative flex h-11 w-11 items-center justify-center rounded-full bg-white/70 border border-white/60 text-gray-700 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-              title="Camera (coming soon)"
-            >
-              <span className="text-xl">📷</span>
-            </button>
-            <button
-              type="button"
-              aria-label="Upload from folder"
-              onClick={() => { setOpen(true); setFabExpanded(false); }}
-              className="group relative flex h-11 w-11 items-center justify-center rounded-full bg-white/70 border border-white/60 text-gray-700 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-            >
-              <span className="text-xl">📁</span>
-            </button>
-          </div>
-          {/* Main FAB */}
+      {/* Creation actions */}
+      <div className="fixed right-4 bottom-[110px] z-[60] flex flex-col items-end">
+        <div className={`flex items-center gap-2 mb-2 transition-all duration-300 ${showCreate ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`} aria-hidden={!showCreate}>
           <button
             type="button"
-            aria-label={fabExpanded ? 'Close create options' : 'Open create options'}
-            onClick={() => setFabExpanded(v => !v)}
-            className={`group relative h-14 w-14 rounded-full flex items-center justify-center active:scale-95 transition focus:outline-none focus:ring-2 focus:ring-blue-500/70 ${fabExpanded ? 'bg-blue-600 text-white' : 'bg-white/80 supports-[backdrop-filter]:bg-white/60 text-gray-800'} backdrop-blur-md border border-white/60 shadow-lg`}
-          >
-            <span className={`text-[26px] leading-none -mt-px transition-transform ${fabExpanded ? 'rotate-45' : ''}`}>＋</span>
-            <span className="pointer-events-none absolute -bottom-5 text-[10px] font-medium tracking-wide text-gray-200 opacity-0 group-hover:opacity-100 transition select-none">Create</span>
-            <span className="absolute inset-0 rounded-full ring-1 ring-inset ring-white/70" aria-hidden="true" />
-          </button>
+            disabled
+            className="h-11 w-11 rounded-full bg-white/70 border border-white/60 flex items-center justify-center text-gray-700 disabled:opacity-40"
+            aria-label="Camera (coming soon)"
+          >📷</button>
+          <button
+            type="button"
+            onClick={() => { setPanelOpen(true); setShowCreate(false); }}
+            className="h-11 w-11 rounded-full bg-white/70 border border-white/60 flex items-center justify-center text-gray-700 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+            aria-label="Upload image reel"
+          >📁</button>
         </div>
+        <button
+          ref={fabRef}
+          type="button"
+          onClick={() => setShowCreate(v => !v)}
+          aria-expanded={showCreate}
+          aria-label={showCreate ? 'Close create options' : 'Open create options'}
+          className={`h-14 w-14 rounded-full border border-white/60 shadow-lg flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-500/70 transition active:scale-95 ${showCreate ? 'bg-blue-600 text-white' : 'bg-white/80 supports-[backdrop-filter]:bg-white/60 text-gray-800 backdrop-blur'}`}
+        >
+          <span className={`text-[26px] leading-none -mt-px transition-transform ${showCreate ? 'rotate-45' : ''}`}>＋</span>
+        </button>
       </div>
 
-      {/* Slide-over Panel */}
-      <div
-        aria-hidden={!open}
-        className="fixed inset-0 z-[70] flex justify-end transition"
-      >
-        {/* Backdrop (only interactive when open) */}
+      {/* Panel */}
+      <div className="fixed inset-0 z-[70] flex justify-end pointer-events-none" aria-hidden={!panelOpen}>
         <div
-          onClick={() => open && setOpen(false)}
-          className={`absolute inset-0 transition-opacity ${open ? 'pointer-events-auto opacity-100 bg-black/50 backdrop-blur-sm' : 'pointer-events-none opacity-0'}`}
+          onClick={() => panelOpen && setPanelOpen(false)}
+          className={`absolute inset-0 transition-opacity ${panelOpen ? 'bg-black/50 backdrop-blur-sm opacity-100 pointer-events-auto' : 'opacity-0'}`}
         />
-        <aside
+        <div
+          ref={panelRef}
           role="dialog"
-            aria-label="Create a new reel"
-          className={`relative h-full w-full max-w-sm bg-white/95 backdrop-blur border-l border-gray-200 shadow-xl transform transition-transform duration-300 ease-out flex flex-col ${open ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'}`}
+          aria-label="Create a new reel"
+          className={`relative h-full w-full max-w-sm bg-white/95 backdrop-blur border-l border-gray-200 shadow-xl transform transition-transform duration-300 ease-out flex flex-col pointer-events-auto ${panelOpen ? 'translate-x-0' : 'translate-x-full'}`}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/70 bg-white/70 backdrop-blur-sm">
             <h2 className="text-sm font-semibold tracking-wide text-gray-800">New Reel</h2>
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={() => setPanelOpen(false)}
               aria-label="Close create reel panel"
               className="rounded p-1 text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
             >✕</button>
           </div>
           <div className="overflow-y-auto p-4 pb-24">
-            {panelMounted && (
-              <CreateReel onCreated={handleCreated} />
-            )}
+            {mountedCreate && panelOpen && <CreateReel onCreated={handleCreated} />}
           </div>
-        </aside>
+        </div>
       </div>
     </div>
   );
