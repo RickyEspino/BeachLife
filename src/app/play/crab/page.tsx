@@ -19,6 +19,20 @@ const CRIT_CHANCE = 0.10; // 10%
 const MAX_TAPS_PER_100MS_BUCKET = 12; // anti-macro burst
 const MAX_TAPS_PER_SECOND = 20; // soft cap
 
+// Power-up & FX groundwork (extensible)
+// (Future power-ups will hook into these structures.)
+
+type Particle = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  color: string;
+};
+
 export default function Page() {
   const [state, setState] = useState<BattleState>("READY");
   const [hp, setHp] = useState<number>(STARTING_HP);
@@ -37,6 +51,86 @@ export default function Page() {
   const [shakeKey, setShakeKey] = useState<number>(0);
   const [flash, setFlash] = useState<boolean>(false);
   const [celebrate, setCelebrate] = useState<boolean>(false);
+  // Particles
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const particlesRef = useRef<Particle[]>([]);
+  const particleRafRef = useRef<number>(0);
+  const crabButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  // Spawn a particle burst at a normalized (0-1) position within the crab button
+  const spawnParticles = useCallback((nx: number, ny: number, crit: boolean) => {
+    const arr = particlesRef.current;
+    const count = crit ? 42 : 24;
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.random() * Math.PI * 2);
+      const speed = crit ? 140 + Math.random() * 160 : 90 + Math.random() * 110; // px/s
+      const vx = Math.cos(angle) * speed;
+      const vy = Math.sin(angle) * speed;
+      const maxLife = 400 + Math.random() * 300; // ms
+      const size = crit ? 5 + Math.random() * 6 : 4 + Math.random() * 4;
+      const hues = crit ? [30, 40, 45, 50] : [18, 20, 24, 28];
+      const hue = hues[Math.floor(Math.random() * hues.length)];
+      const sat = crit ? 95 : 92;
+      const light = crit ? 60 + Math.random() * 15 : 55 + Math.random() * 10;
+      arr.push({
+        x: nx,
+        y: ny,
+        vx,
+        vy,
+        life: 0,
+        maxLife,
+        size,
+        color: `hsl(${hue} ${sat}% ${light}%)`
+      });
+    }
+  }, []);
+
+  // Particle animation loop
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let last = performance.now();
+    const run = () => {
+      const now = performance.now();
+      const dt = now - last; // ms
+      last = now;
+
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w * window.devicePixelRatio;
+        canvas.height = h * window.devicePixelRatio;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      }
+
+      ctx.clearRect(0, 0, w, h);
+      const arr = particlesRef.current;
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const p = arr[i];
+        p.life += dt;
+        const t = p.life / p.maxLife; // 0..1
+        if (t >= 1) { arr.splice(i, 1); continue; }
+        // simple motion
+        p.x += (p.vx * dt) / 1000 / w; // convert px/s to normalized
+        p.y += (p.vy * dt) / 1000 / h;
+        // fade & scale
+        const alpha = t < 0.7 ? 1 - t * 0.6 : Math.max(0, 1 - (t - 0.7) / 0.3);
+        const size = p.size * (1 - t * 0.35);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x * w, p.y * h, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      particleRafRef.current = requestAnimationFrame(run);
+    };
+    particleRafRef.current = requestAnimationFrame(run);
+    return () => cancelAnimationFrame(particleRafRef.current);
+  }, []);
 
   // Web Audio
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -213,7 +307,7 @@ export default function Page() {
     setState("BATTLE");
   }, [ensureAudio]);
 
-  const onTap = useCallback(async () => {
+  const onTap = useCallback(async (ev?: React.PointerEvent | React.MouseEvent | React.TouchEvent) => {
     if (state !== "BATTLE") return;
     await ensureAudio();
 
@@ -239,7 +333,7 @@ export default function Page() {
     // Ignore if already done
     if (hp <= 0 || timeLeft <= 0) return;
 
-    const isCrit = Math.random() < CRIT_CHANCE;
+  const isCrit = Math.random() < CRIT_CHANCE;
     const dmg = isCrit ? CRIT_DAMAGE : TAP_DAMAGE;
 
     setTaps((t) => t + 1);
@@ -262,7 +356,28 @@ export default function Page() {
       }
       return next;
     });
-  }, [state, hp, timeLeft, reducedMotion, vibrate, ensureAudio, sfx]);
+
+    // Particle origin (normalized inside crab button)
+    if (crabButtonRef.current) {
+      const rect = crabButtonRef.current.getBoundingClientRect();
+      let clientX: number | undefined; let clientY: number | undefined;
+      // Try multiple event coordinate sources
+      if (ev) {
+        // @ts-expect-error unify touch
+        const t = ev.touches?.[0];
+        if (t) { clientX = t.clientX; clientY = t.clientY; }
+        // @ts-expect-error pointer/mouse
+        if (ev.clientX != null) { clientX = ev.clientX; clientY = ev.clientY; }
+      }
+      if (clientX == null || clientY == null) {
+        clientX = rect.left + rect.width / 2;
+        clientY = rect.top + rect.height / 2;
+      }
+      const nx = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      const ny = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+      spawnParticles(nx, ny, isCrit);
+    }
+  }, [state, hp, timeLeft, reducedMotion, vibrate, ensureAudio, sfx, spawnParticles]);
 
   // SVG ring math
   const circumference = 2 * Math.PI * 140; // r = 140 (bigger ring)
@@ -375,9 +490,19 @@ export default function Page() {
                 </div>
               )}
 
+              {/* Particle canvas (behind interactive content) */}
+              <canvas
+                ref={canvasRef}
+                className="absolute inset-8 sm:inset-10 rounded-full pointer-events-none"
+                aria-hidden
+              />
+
               {/* Tap target */}
               <button
+                ref={crabButtonRef}
                 onClick={onTap}
+                onPointerDown={onTap}
+                onTouchStart={(e) => onTap(e)}
                 aria-label="Tap the King Crab"
                 className={`absolute inset-8 sm:inset-10 rounded-full select-none focus:outline-none focus-visible:ring-4 focus-visible:ring-amber-400/60 ${
                   state === "BATTLE" ? "cursor-pointer" : "cursor-default"
