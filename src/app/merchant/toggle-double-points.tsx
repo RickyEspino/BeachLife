@@ -59,12 +59,12 @@ export default function DoublePointsToggle({ merchantId }: { merchantId: string 
   const [remaining, setRemaining] = useState<number>(0);
 
   useEffect(() => {
-  const ps = readPromos();
-    setPromosState(ps); // Update to use _promosState
-  const found = ps.find(p => p.id === id);
+    const ps = readPromos();
+    setPromosState(ps);
+    const found = ps.find(p => p.id === id);
     setEnabled(!!found);
     if (found) setRemaining(found.expiresAt - Date.now());
-  }, [merchantId]);
+  }, [id]);
 
   // Listen for cross-tab changes
   useEffect(() => {
@@ -90,7 +90,7 @@ export default function DoublePointsToggle({ merchantId }: { merchantId: string 
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('merchant:double-points-change', onCustom as EventListener);
     };
-  }, [merchantId]);
+  }, [id]);
 
   // Remaining time ticker
   useEffect(() => {
@@ -104,7 +104,7 @@ export default function DoublePointsToggle({ merchantId }: { merchantId: string 
       if (rem <= 0) setEnabled(false);
     }, 1000);
     return () => clearInterval(intervalId);
-  }, [enabled, merchantId]);
+  }, [enabled, id]);
 
   const toggle = useCallback(() => {
   setPromosState(prev => {
@@ -134,7 +134,7 @@ export default function DoublePointsToggle({ merchantId }: { merchantId: string 
         return updated;
       }
     });
-  }, [merchantId, durationMs]);
+  }, [id, durationMs]);
 
   const onChangeDuration = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = Number(e.target.value);
