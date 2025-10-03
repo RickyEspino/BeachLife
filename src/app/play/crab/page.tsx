@@ -372,22 +372,25 @@ export default function Page() {
           {/* ⚡ Lightning overlay */}
           <div className={`lightning pointer-events-none absolute inset-0 ${strikeOn ? "on" : ""}`} />
 
-          {/* Floating combat text */}
-          <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            {combatText.map(evt => (
-              <span
-                key={evt.id}
-                className={`absolute left-1/2 top-1/2 -translate-x-1/2 select-none font-bold text-xs sm:text-sm md:text-base combat-float opacity-0
-                  ${evt.type === 'crit' ? 'text-amber-300 drop-shadow-[0_0_6px_rgba(255,191,71,0.6)]' : ''}
-                  ${evt.type === 'hit' ? 'text-red-300 drop-shadow-[0_0_4px_rgba(255,60,60,0.5)]' : ''}
-                  ${evt.type === 'combo' ? 'text-fuchsia-300 drop-shadow-[0_0_6px_rgba(255,0,200,0.5)]' : ''}
-                  ${evt.type === 'block' ? 'text-emerald-300 drop-shadow-[0_0_6px_rgba(16,185,129,0.5)]' : ''}`}
-                style={{
-                  // slight random jitter
-                  transform: `translate(-50%, -50%) translate(${(evt.id % 5 - 2) * 8}px, ${(evt.id % 7 - 3) * 4}px)`
-                }}
-              >{evt.text}</span>
-            ))}
+          {/* Floating combat text (positioned below boss HP bar) */}
+          <div className="pointer-events-none absolute left-0 right-0 top-12 flex flex-col items-center z-20">
+            <div className="relative min-h-[80px] w-full flex items-start justify-center overflow-visible">
+              {combatText.map(evt => (
+                <span
+                  key={evt.id}
+                  className={`absolute select-none font-extrabold tracking-wide text-4xl md:text-5xl combat-float-large opacity-0
+                    ${evt.type === 'crit' ? 'text-amber-300 drop-shadow-[0_0_10px_rgba(255,191,71,0.65)]' : ''}
+                    ${evt.type === 'hit' ? 'text-red-300 drop-shadow-[0_0_8px_rgba(255,60,60,0.55)]' : ''}
+                    ${evt.type === 'combo' ? 'text-fuchsia-300 drop-shadow-[0_0_10px_rgba(255,0,200,0.6)]' : ''}
+                    ${evt.type === 'block' ? 'text-emerald-300 drop-shadow-[0_0_10px_rgba(16,185,129,0.55)]' : ''}`}
+                  style={{
+                    top: 0,
+                    left: '50%',
+                    transform: `translateX(-50%) translate(${(evt.id % 5 - 2) * 14}px, ${(evt.id % 7 - 3) * 6}px)`
+                  }}
+                >{evt.text}</span>
+              ))}
+            </div>
           </div>
 
           {/* TOP: Boss HP */}
@@ -475,11 +478,18 @@ export default function Page() {
       <style jsx global>{`
         /* Floating combat text animation */
         .combat-float { animation: combat-float 900ms ease-out forwards; }
+        .combat-float-large { animation: combat-float-large 1100ms cubic-bezier(.2,.8,.3,1) forwards; }
         @keyframes combat-float {
           0% { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
           10% { opacity: 1; transform: translate(-50%, -60%) scale(1); }
           60% { opacity: 1; transform: translate(-50%, -90%) scale(1.05); }
           100% { opacity: 0; transform: translate(-50%, -130%) scale(1.1); }
+        }
+        @keyframes combat-float-large {
+          0% { opacity: 0; transform: translate(-50%, 10px) scale(.55); filter: blur(2px); }
+          12% { opacity: 1; transform: translate(-50%, -8px) scale(1); filter: blur(0); }
+          55% { opacity: 1; transform: translate(-50%, -32px) scale(1.08); }
+          100% { opacity: 0; transform: translate(-50%, -70px) scale(1.15); }
         }
         /* Idle motions for crab */
         #crab svg #claws {
