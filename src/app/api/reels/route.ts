@@ -42,14 +42,14 @@ export async function GET(req: NextRequest) {
   const rows = (data || []) as unknown as Row[];
   const hasMore = rows.length > limit;
   const slice = rows.slice(0, limit);
-  let likedIds = new Set<number>();
+  const likedIds = new Set<number>();
   if (user && slice.length) {
-    const reelIds = slice.map(r => r.id);
+  const reelIds: number[] = slice.map(r => r.id);
     const { data: likesData } = await supabase
       .from('reel_likes')
       .select('reel_id')
       .eq('user_id', user.id)
-      .in('reel_id', reelIds as any);
+  .in('reel_id', reelIds);
     if (likesData) {
       for (const l of likesData as { reel_id: number }[]) likedIds.add(l.reel_id);
     }

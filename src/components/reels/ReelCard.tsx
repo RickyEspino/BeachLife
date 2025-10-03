@@ -16,20 +16,14 @@ export interface ReelItem {
 
 interface Props {
   item: ReelItem;
-  onVisible?: (id: string | number) => void; // future use for prefetch or analytics
+  onToggleLike?: (id: number | string, currentLiked: boolean) => void;
+  onVisible?: (id: string | number) => void; // future use
 }
 
-export default function ReelCard({ item }: Props) {
+export default function ReelCard({ item, onToggleLike }: Props) {
   const [loaded, setLoaded] = useState(false);
-  const [liked, setLiked] = useState<boolean>(!!item.liked);
-  const [likeCount, setLikeCount] = useState<number>(item.likeCount);
-
-  const toggleLike = () => {
-    // Optimistic toggle (actual API integration added later)
-    setLiked(l => !l);
-    setLikeCount(c => liked ? Math.max(0, c - 1) : c + 1);
-    window.dispatchEvent(new CustomEvent('reel:like-toggled', { detail: { id: item.id, liked: !liked } }));
-  };
+  const liked = !!item.liked;
+  const likeCount = item.likeCount;
   return (
     <article className="relative h-[100dvh] w-full flex-shrink-0 snap-start overflow-hidden bg-black">
       <Image
@@ -69,7 +63,7 @@ export default function ReelCard({ item }: Props) {
       <div className="absolute right-3 bottom-28 flex flex-col items-center gap-4">
         <button
           type="button"
-          onClick={toggleLike}
+          onClick={() => onToggleLike?.(item.id, liked)}
           aria-label={liked ? 'Unlike' : 'Like'}
           className={`group relative h-14 w-14 rounded-full flex items-center justify-center transition active:scale-90 ${liked ? 'bg-rose-600' : 'bg-white/20 backdrop-blur'} border border-white/20`}
         >

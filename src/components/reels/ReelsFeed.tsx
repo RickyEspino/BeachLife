@@ -20,6 +20,31 @@ export default function ReelsFeed({ initial, initialNextCursor }: Props) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const reachedEnd = !nextCursor;
 
+  const updateItem = (id: number | string, patch: Partial<ReelItem>) => {
+    setItems(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
+  };
+
+  const handleToggleLike = async (id: number | string, currentlyLiked: boolean) => {
+    const numericId = typeof id === 'string' ? Number(id) : id;
+    if (!Number.isFinite(numericId)) return;
+    // optimistic
+    updateItem(id, { liked: !currentlyLiked, likeCount: (items.find(i => i.id === id)?.likeCount || 0) + (currentlyLiked ? -1 : 1) });
+    try {
+      const method = currentlyLiked ? 'DELETE' : 'POST';
+      const res = await fetch(`/api/reels/${numericId}/like`, { method });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      if (typeof data.likeCount === 'number') {
+        updateItem(id, { likeCount: data.likeCount, liked: data.liked });
+      } else {
+        updateItem(id, { liked: data.liked });
+      }
+    } catch {
+      // rollback
+      updateItem(id, { liked: currentlyLiked, likeCount: (items.find(i => i.id === id)?.likeCount || 0) + (currentlyLiked ? 1 : -1) });
+    }
+  };
+
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
@@ -69,7 +94,7 @@ export default function ReelsFeed({ initial, initialNextCursor }: Props) {
   return (
     <div className="relative h-[100dvh] w-full overflow-y-scroll snap-y snap-mandatory scrollbar-none bg-black">
       {items.map(item => (
-        <ReelCard key={item.id} item={item} />
+        <ReelCard key={item.id} item={item} onToggleLike={handleToggleLike} />
       ))}
       <div ref={sentinelRef} />
       <div className="absolute left-2 top-2 z-20 text-[10px] rounded bg-black/50 text-white px-2 py-1">

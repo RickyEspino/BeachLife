@@ -36,6 +36,25 @@ type Props = {
   sharedUsers?: Array<{ id: string; username: string; avatarUrl?: string | null; latitude: number; longitude: number; updatedAt?: string }>;
 };
 
+type UnifiedPoint = {
+  id: string;
+  type: 'merchant' | 'user';
+  name: string;
+  latitude: number;
+  longitude: number;
+  avatarUrl?: string | null;
+  category?: string;
+  username?: string;
+};
+
+type Cluster = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  count: number;
+  points: UnifiedPoint[];
+};
+
 export default function MapComponent({ merchants = [], loadError, initialView, focusId, showUserLocation = false, userAvatarUrl, sharedUsers = [] }: Props) {
   const [mapRef, setMapRef] = useState<MapRef | null>(null);
   // Derive starting center: provided initialView > merchants centroid > fallback beaches[0]
@@ -90,6 +109,62 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
     }
   }, [focusId, merchants]);
 
+  // Combine merchants + shared users for clustering
+  const unifiedPoints: UnifiedPoint[] = useMemo(() => {
+    const ms: UnifiedPoint[] = merchants.map(m => ({ id: m.id, type: 'merchant', name: m.name, latitude: m.latitude, longitude: m.longitude, category: m.category }));
+    const us: UnifiedPoint[] = sharedUsers.map(u => ({ id: `u-${u.id}`, type: 'user', name: u.username, latitude: u.latitude, longitude: u.longitude, avatarUrl: u.avatarUrl, username: u.username }));
+    return [...ms, ...us];
+  }, [merchants, sharedUsers]);
+
+  const zoom = (viewState.zoom as number) || 0;
+
+  // Simple distance threshold in degrees (approx) based on zoom
+  const clusterThreshold = useMemo(() => {
+    if (zoom < 5) return 1.5; // very coarse
+    if (zoom < 6) return 0.9;
+    if (zoom < 7) return 0.5;
+    if (zoom < 8) return 0.25;
+    if (zoom < 9) return 0.12;
+    if (zoom < 10) return 0.07;
+    if (zoom < 11) return 0.04;
+    if (zoom < 12) return 0.02;
+    if (zoom < 13) return 0.01;
+    if (zoom < 14) return 0.006;
+    if (zoom < 15) return 0.004;
+    return 0.002; // high zoom small cluster radius
+  }, [zoom]);
+
+  const clusters: Cluster[] = useMemo(() => {
+    const list: Cluster[] = [];
+    for (const p of unifiedPoints) {
+      let target: Cluster | undefined;
+      for (const c of list) {
+        const dLat = Math.abs(c.latitude - p.latitude);
+        const dLng = Math.abs(c.longitude - p.longitude);
+        if (dLat <= clusterThreshold && dLng <= clusterThreshold) {
+          target = c; break;
+        }
+      }
+      if (target) {
+        target.points.push(p);
+        // incremental average to keep center stable
+        const n = target.points.length;
+        target.latitude = target.latitude + (p.latitude - target.latitude) / n;
+        target.longitude = target.longitude + (p.longitude - target.longitude) / n;
+        target.count = target.points.length;
+      } else {
+        list.push({ id: p.id, latitude: p.latitude, longitude: p.longitude, count: 1, points: [p] });
+      }
+    }
+    return list;
+  }, [unifiedPoints, clusterThreshold]);
+
+  const handleClusterClick = (c: Cluster) => {
+    // Zoom in towards cluster center to expand
+    const targetZoom = Math.min(((viewState.zoom as number) || 0) + 2, 18);
+    mapRef?.flyTo({ center: [c.longitude, c.latitude], zoom: targetZoom, duration: 650, essential: true });
+  };
+
   return (
     <div className="fixed inset-0" role="region" aria-label="Interactive map of merchants and beaches">
       <Map
@@ -105,42 +180,62 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
             Missing Mapbox token
           </div>
         )}
-        {/* Merchant pins */}
-        {merchants.map(m => (
-          <Marker key={m.id} longitude={m.longitude} latitude={m.latitude} anchor="bottom">
-            <button
-              aria-label={`Merchant: ${m.name}`}
-              className="text-xl drop-shadow-sm"
-              onClick={e => { e.preventDefault(); setSelected(m); }}
-            >
-              🏪
-            </button>
-          </Marker>
-        ))}
-
-        {/* Shared user markers (excluding current user position marker) */}
-        {sharedUsers.map(u => (
-          <Marker key={`u-${u.id}`} longitude={u.longitude} latitude={u.latitude} anchor="center">
-            <div className="relative -translate-y-1 -translate-x-1" title={u.username}>
-              {u.avatarUrl ? (
-                <Image
-                  src={u.avatarUrl}
-                  alt={u.username}
-                  width={38}
-                  height={38}
-                  className="h-9 w-9 rounded-full ring-2 ring-white shadow object-cover"
-                  draggable={false}
-                  loading="lazy"
-                />
-              ) : (
-                <div className="h-9 w-9 rounded-full ring-2 ring-white shadow bg-gradient-to-br from-gray-100 to-gray-300 grid place-items-center text-[11px] font-medium text-gray-700">
-                  {u.username?.[0]?.toUpperCase() || '?'}
-                </div>
-              )}
-              <span className="pointer-events-none absolute inset-0 rounded-full ring ring-emerald-500/40 animate-pulse" aria-hidden="true" />
-            </div>
-          </Marker>
-        ))}
+        {/* Clustered points (merchants + shared users) */}
+        {clusters.map(c => {
+          if (c.count === 1) {
+            const p = c.points[0];
+            if (p.type === 'merchant') {
+              return (
+                <Marker key={p.id} longitude={p.longitude} latitude={p.latitude} anchor="bottom">
+                  <button
+                    aria-label={`Merchant: ${p.name}`}
+                    className="text-xl drop-shadow-sm"
+                    onClick={e => { e.preventDefault(); setSelected({ id: p.id, name: p.name, latitude: p.latitude, longitude: p.longitude, category: p.category }); }}
+                  >
+                    🏪
+                  </button>
+                </Marker>
+              );
+            } else {
+              return (
+                <Marker key={p.id} longitude={p.longitude} latitude={p.latitude} anchor="center">
+                  <div className="relative -translate-y-1 -translate-x-1" title={p.username}>
+                    {p.avatarUrl ? (
+                      <Image
+                        src={p.avatarUrl}
+                        alt={p.username || 'user'}
+                        width={38}
+                        height={38}
+                        className="h-9 w-9 rounded-full ring-2 ring-white shadow object-cover"
+                        draggable={false}
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="h-9 w-9 rounded-full ring-2 ring-white shadow bg-gradient-to-br from-gray-100 to-gray-300 grid place-items-center text-[11px] font-medium text-gray-700">
+                        {p.username?.[0]?.toUpperCase() || '?'}
+                      </div>
+                    )}
+                    <span className="pointer-events-none absolute inset-0 rounded-full ring ring-emerald-500/40 animate-pulse" aria-hidden="true" />
+                  </div>
+                </Marker>
+              );
+            }
+          }
+          // cluster marker
+          return (
+            <Marker key={`cluster-${c.id}-${c.count}`} longitude={c.longitude} latitude={c.latitude} anchor="center">
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); handleClusterClick(c); }}
+                aria-label={`Cluster with ${c.count} points`}
+                className="relative h-12 w-12 rounded-full bg-emerald-600/80 backdrop-blur text-white font-semibold text-sm flex items-center justify-center shadow-lg ring-2 ring-white hover:scale-105 active:scale-95 transition"
+              >
+                {c.count}
+                <span className="absolute -inset-1 rounded-full animate-ping bg-emerald-400/30" aria-hidden="true" />
+              </button>
+            </Marker>
+          );
+        })}
 
         {/* Fallback beach pins (could later be hidden or toggled) */}
         {merchants.length === 0 && beaches.map((b) => (
