@@ -33,9 +33,10 @@ type Props = {
   focusId?: string;
   showUserLocation?: boolean;
   userAvatarUrl?: string;
+  sharedUsers?: Array<{ id: string; username: string; avatarUrl?: string | null; latitude: number; longitude: number; updatedAt?: string }>;
 };
 
-export default function MapComponent({ merchants = [], loadError, initialView, focusId, showUserLocation = false, userAvatarUrl }: Props) {
+export default function MapComponent({ merchants = [], loadError, initialView, focusId, showUserLocation = false, userAvatarUrl, sharedUsers = [] }: Props) {
   const [mapRef, setMapRef] = useState<MapRef | null>(null);
   // Derive starting center: provided initialView > merchants centroid > fallback beaches[0]
   const centroid = useMemo(() => {
@@ -114,6 +115,30 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
             >
               🏪
             </button>
+          </Marker>
+        ))}
+
+        {/* Shared user markers (excluding current user position marker) */}
+        {sharedUsers.map(u => (
+          <Marker key={`u-${u.id}`} longitude={u.longitude} latitude={u.latitude} anchor="center">
+            <div className="relative -translate-y-1 -translate-x-1" title={u.username}>
+              {u.avatarUrl ? (
+                <Image
+                  src={u.avatarUrl}
+                  alt={u.username}
+                  width={38}
+                  height={38}
+                  className="h-9 w-9 rounded-full ring-2 ring-white shadow object-cover"
+                  draggable={false}
+                  loading="lazy"
+                />
+              ) : (
+                <div className="h-9 w-9 rounded-full ring-2 ring-white shadow bg-gradient-to-br from-gray-100 to-gray-300 grid place-items-center text-[11px] font-medium text-gray-700">
+                  {u.username?.[0]?.toUpperCase() || '?'}
+                </div>
+              )}
+              <span className="pointer-events-none absolute inset-0 rounded-full ring ring-emerald-500/40 animate-pulse" aria-hidden="true" />
+            </div>
           </Marker>
         ))}
 

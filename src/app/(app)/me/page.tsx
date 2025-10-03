@@ -33,7 +33,7 @@ export default async function MePage() {
   // Profile (+ role for admin button)
   const { data: profile } = await supabase
     .from("profiles")
-    .select("username, avatar_url, role")
+    .select("username, avatar_url, role, share_location")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -166,6 +166,7 @@ export default async function MePage() {
           adminHref="/admin"
           // Avatar actions
           removeAvatarAction={removeAvatarAction}
+          shareLocation={!!profile.share_location}
         />
       </div>
     </main>

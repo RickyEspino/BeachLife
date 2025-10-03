@@ -19,6 +19,7 @@ export default function MeDashboard(props: {
   username: string;
   avatarUrl: string;
   initialsFallback: string;
+  shareLocation: boolean;
 
   totalPoints: number;
   level: number;
@@ -46,6 +47,7 @@ export default function MeDashboard(props: {
     username,
     avatarUrl,
     initialsFallback,
+    shareLocation,
     totalPoints,
     level,
     pctToNext,
@@ -179,6 +181,7 @@ export default function MeDashboard(props: {
               isAdmin={isAdmin}
               adminHref={adminHref}
               removeAvatarAction={removeAvatarAction}
+              shareLocation={shareLocation}
             />
           )}
 
@@ -230,6 +233,7 @@ function ProfilePanel({
   isAdmin,
   adminHref,
   removeAvatarAction,
+  shareLocation,
 }: {
   username: string;
   userEmail: string;
@@ -238,7 +242,10 @@ function ProfilePanel({
   isAdmin: boolean;
   adminHref: string;
   removeAvatarAction: (formData?: FormData) => void | Promise<void>;
+  shareLocation: boolean;
 }) {
+  // Lazy import to avoid SSR geolocation warnings
+  const LocationShareToggle = dynamic(() => import('@/components/LocationShareToggle'), { ssr: false });
   return (
     <div className="grid gap-4">
       {/* Avatar + Admin badge row */}
@@ -286,6 +293,10 @@ function ProfilePanel({
           </form>
         )}
         <p className="text-xs text-gray-500">Max 5MB. Square images look best.</p>
+      </div>
+
+      <div className="rounded-xl border p-4 space-y-3">
+  <LocationShareToggle initialShared={shareLocation} />
       </div>
     </div>
   );
