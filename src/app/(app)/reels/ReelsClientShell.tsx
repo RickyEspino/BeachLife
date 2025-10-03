@@ -5,6 +5,7 @@ import type { ReelItem } from '@/components/reels/ReelCard';
 
 const ReelsFeed = dynamic(() => import('@/components/reels/ReelsFeed'));
 const CreateReel = dynamic(() => import('@/components/reels/CreateReel'));
+const CaptureReel = dynamic(() => import('@/components/reels/CaptureReel'));
 
 interface Props {
   initial: ReelItem[];
@@ -15,6 +16,7 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
   const [panelOpen, setPanelOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false); // expand secondary actions
   const [mountedCreate, setMountedCreate] = useState(false);
+  const [mode, setMode] = useState<'upload' | 'capture'>('upload');
   const fabRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -56,13 +58,13 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
         <div className={`flex items-center gap-2 mb-2 transition-all duration-300 ${showCreate ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`} aria-hidden={!showCreate}>
           <button
             type="button"
-            disabled
-            className="h-11 w-11 rounded-full bg-white/70 border border-white/60 flex items-center justify-center text-gray-700 disabled:opacity-40"
-            aria-label="Camera (coming soon)"
+            onClick={() => { setMode('capture'); setPanelOpen(true); setShowCreate(false); }}
+            className="h-11 w-11 rounded-full bg-white/70 border border-white/60 flex items-center justify-center text-gray-700 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+            aria-label="Open camera to capture reel"
           >📷</button>
           <button
             type="button"
-            onClick={() => { setPanelOpen(true); setShowCreate(false); }}
+            onClick={() => { setMode('upload'); setPanelOpen(true); setShowCreate(false); }}
             className="h-11 w-11 rounded-full bg-white/70 border border-white/60 flex items-center justify-center text-gray-700 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
             aria-label="Upload image reel"
           >📁</button>
@@ -101,7 +103,9 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
             >✕</button>
           </div>
           <div className="overflow-y-auto p-4 pb-24">
-            {mountedCreate && panelOpen && <CreateReel onCreated={handleCreated} />}
+            {mountedCreate && panelOpen && (
+              mode === 'upload' ? <CreateReel onCreated={handleCreated} /> : <CaptureReel onCreated={handleCreated} onCancel={() => setPanelOpen(false)} />
+            )}
           </div>
         </div>
       </div>
