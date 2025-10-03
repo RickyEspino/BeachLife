@@ -10,6 +10,7 @@ interface Props {
   initialView?: { latitude: number; longitude: number; zoom?: number };
   focusId?: string;
   userAvatarUrl?: string;
+  currentUserId?: string;
 }
 
 export default function ClientLiveMap(props: Props) {

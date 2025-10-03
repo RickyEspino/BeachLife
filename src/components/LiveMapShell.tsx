@@ -10,10 +10,11 @@ interface Props {
   initialView?: { latitude: number; longitude: number; zoom?: number };
   focusId?: string;
   userAvatarUrl?: string;
+  currentUserId?: string;
   pollIntervalMs?: number; // default 60s
 }
 
-export default function LiveMapShell({ merchants, loadError, initialView, focusId, userAvatarUrl, pollIntervalMs = 60_000 }: Props) {
+export default function LiveMapShell({ merchants, loadError, initialView, focusId, userAvatarUrl, currentUserId, pollIntervalMs = 60_000 }: Props) {
   const [sharedUsers, setSharedUsers] = useState<SharedUser[]>([]);
   const [lastFetched, setLastFetched] = useState<number | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -25,7 +26,9 @@ export default function LiveMapShell({ merchants, loadError, initialView, focusI
       const res = await fetch('/api/shared-users?maxAgeMinutes=180&limit=250', { cache: 'no-store' });
       if (!res.ok) throw new Error(`Fetch ${res.status}`);
       const json = await res.json();
-      if (Array.isArray(json)) setSharedUsers(json);
+      if (Array.isArray(json)) {
+        setSharedUsers(currentUserId ? json.filter(u => u.id !== currentUserId) : json);
+      }
       setLastFetched(Date.now());
     } catch (e) {
       setFetchError(e instanceof Error ? e.message : 'Failed');
