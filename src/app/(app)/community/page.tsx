@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from '@/lib/supabase/serverClient';
 import React from 'react';
+import Image from 'next/image';
 
 export default async function Page() {
 	const supabase = createSupabaseServerClient();
@@ -105,7 +106,18 @@ function PlayerCell({ name, avatar, rank }:{ name:string; avatar:string|null; ra
 	return (
 		<div className="flex items-center gap-2">
 			<span className="text-xs font-mono w-5 text-gray-500">#{rank}</span>
-			{avatar ? <img src={avatar} alt="avatar" className="h-7 w-7 rounded-full object-cover border" /> : <div className="h-7 w-7 rounded-full bg-gray-200 border" />}
+			{avatar ? (
+				<Image
+					src={avatar}
+					alt="avatar"
+					width={28}
+					height={28}
+					className="h-7 w-7 rounded-full object-cover border"
+					placeholder="empty"
+				/>
+			) : (
+				<div className="h-7 w-7 rounded-full bg-gray-200 border" />
+			)}
 			<span className="font-medium max-w-[120px] truncate">{name}</span>
 		</div>
 	);
