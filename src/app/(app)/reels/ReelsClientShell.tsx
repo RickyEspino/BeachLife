@@ -76,17 +76,17 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
       {/* Slide-over Panel */}
       <div
         aria-hidden={!open}
-        className={`pointer-events-none fixed inset-0 z-[70] flex justify-end transition ${open ? '': ''}`}
+        className="fixed inset-0 z-[70] flex justify-end transition"
       >
-        {/* Backdrop */}
+        {/* Backdrop (only interactive when open) */}
         <div
-          onClick={() => setOpen(false)}
-          className={`pointer-events-auto absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity ${open ? 'opacity-100' : 'opacity-0'}`}
+          onClick={() => open && setOpen(false)}
+          className={`absolute inset-0 transition-opacity ${open ? 'pointer-events-auto opacity-100 bg-black/50 backdrop-blur-sm' : 'pointer-events-none opacity-0'}`}
         />
         <aside
           role="dialog"
-          aria-label="Create a new reel"
-          className={`pointer-events-auto relative h-full w-full max-w-sm bg-white/95 backdrop-blur border-l border-gray-200 shadow-xl transform transition-transform duration-300 ease-out flex flex-col ${open ? 'translate-x-0' : 'translate-x-full'}`}
+            aria-label="Create a new reel"
+          className={`relative h-full w-full max-w-sm bg-white/95 backdrop-blur border-l border-gray-200 shadow-xl transform transition-transform duration-300 ease-out flex flex-col ${open ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'}`}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/70 bg-white/70 backdrop-blur-sm">
             <h2 className="text-sm font-semibold tracking-wide text-gray-800">New Reel</h2>
