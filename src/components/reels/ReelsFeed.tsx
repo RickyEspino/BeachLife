@@ -11,13 +11,14 @@ interface Props {
   initial: ReelItem[];
   initialNextCursor?: string;
   immersive?: boolean;
+  overlayVisible?: boolean;
   onTouchStart?: React.TouchEventHandler<HTMLDivElement>;
   onTouchMove?: React.TouchEventHandler<HTMLDivElement>;
   onTouchEnd?: React.TouchEventHandler<HTMLDivElement>;
   onClick?: React.MouseEventHandler<HTMLDivElement>;
 }
 
-export default function ReelsFeed({ initial, initialNextCursor, immersive, onTouchStart, onTouchMove, onTouchEnd, onClick }: Props) {
+export default function ReelsFeed({ initial, initialNextCursor, immersive, overlayVisible = true, onTouchStart, onTouchMove, onTouchEnd, onClick }: Props) {
   const [items, setItems] = useState<ReelItem[]>(initial);
   const [nextCursor, setNextCursor] = useState<string | undefined>(initialNextCursor);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -129,7 +130,7 @@ export default function ReelsFeed({ initial, initialNextCursor, immersive, onTou
       onClick={onClick}
     >
       {items.map(item => (
-        <ReelCard key={item.id} item={item} immersive={immersive} onToggleLike={handleToggleLike} liking={likingIds.has(item.id)} />
+        <ReelCard key={item.id} item={item} immersive={immersive} overlaysHidden={immersive && !overlayVisible} onToggleLike={handleToggleLike} liking={likingIds.has(item.id)} />
       ))}
       <div ref={sentinelRef} />
       {!immersive && (

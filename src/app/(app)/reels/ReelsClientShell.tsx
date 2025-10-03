@@ -18,9 +18,12 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
   const [mountedCreate, setMountedCreate] = useState(false);
   const [mode, setMode] = useState<'upload' | 'capture'>('upload');
   const [immersive, setImmersive] = useState(false);
+  const [overlayVisible, setOverlayVisible] = useState(true);
   const touchStartY = useRef<number | null>(null);
   const touchDelta = useRef<number>(0);
   const touchStartTime = useRef<number>(0);
+  const touchStartX = useRef<number | null>(null);
+  const touchDeltaX = useRef<number>(0);
   const fabRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -78,22 +81,41 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
   const onTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length !== 1) return;
     touchStartY.current = e.touches[0].clientY;
+    touchStartX.current = e.touches[0].clientX;
     touchDelta.current = 0;
+    touchDeltaX.current = 0;
     touchStartTime.current = Date.now();
   };
   const onTouchMove = (e: React.TouchEvent) => {
     if (touchStartY.current == null) return;
     const currentY = e.touches[0].clientY;
     touchDelta.current = currentY - touchStartY.current; // positive if swiping down
+    if (touchStartX.current != null) {
+      const currentX = e.touches[0].clientX;
+      touchDeltaX.current = currentX - touchStartX.current; // positive if swiping right
+    }
   };
   const onTouchEnd = () => {
-    const delta = touchDelta.current;
-    if (Math.abs(delta) > 40) {
-      if (delta < 0 && !immersive) setImmersive(true); // swipe up to enter immersive
-      if (delta > 0 && immersive) setImmersive(false); // swipe down to exit
+    const deltaY = touchDelta.current;
+    const deltaX = touchDeltaX.current;
+    const absY = Math.abs(deltaY);
+    const absX = Math.abs(deltaX);
+    const THRESH = 40;
+    if (absX > THRESH || absY > THRESH) {
+      if (absY >= absX) {
+        // vertical wins
+        if (deltaY < 0 && !immersive) setImmersive(true); // swipe up to enter
+        if (deltaY > 0 && immersive) { setImmersive(false); setOverlayVisible(true); }
+      } else if (immersive) {
+        // horizontal only active in immersive
+        if (deltaX < 0) setOverlayVisible(false); // left = fully immersive (hide overlays)
+        if (deltaX > 0) setOverlayVisible(true);  // right = show overlays
+      }
     }
     touchStartY.current = null;
+    touchStartX.current = null;
     touchDelta.current = 0;
+    touchDeltaX.current = 0;
   };
 
   const onContainerClick = () => {
@@ -102,7 +124,7 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
 
   return (
     <div className="relative w-full bg-black" style={{ height: 'calc(var(--vh, 1vh) * 100)' }}>
-  <ReelsFeed initial={initial} initialNextCursor={initialNextCursor} immersive={immersive} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onClick={onContainerClick} />
+  <ReelsFeed initial={initial} initialNextCursor={initialNextCursor} immersive={immersive} overlayVisible={overlayVisible} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onClick={onContainerClick} />
 
       {/* Creation actions */}
       {!immersive && (

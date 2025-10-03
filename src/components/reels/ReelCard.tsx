@@ -20,9 +20,10 @@ interface Props {
   onVisible?: (id: string | number) => void; // future use
   liking?: boolean; // in-flight like/unlike to prevent spamming
   immersive?: boolean;
+  overlaysHidden?: boolean;
 }
 
-export default function ReelCard({ item, onToggleLike, liking, immersive }: Props) {
+export default function ReelCard({ item, onToggleLike, liking, immersive, overlaysHidden }: Props) {
   const [loaded, setLoaded] = useState(false);
   const lastTapRef = useRef<number>(0);
   const liked = !!item.liked;
@@ -60,8 +61,8 @@ export default function ReelCard({ item, onToggleLike, liking, immersive }: Prop
       />
       {!loaded && <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-gray-800 to-gray-700" />}
       {/* Top gradient + overlay container */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/70 via-black/30 to-transparent" />
-      <div className="absolute left-0 right-0 top-0 z-10 flex items-start justify-between px-3 pt-4">
+      {!overlaysHidden && <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/70 via-black/30 to-transparent" />}
+      {!overlaysHidden && <div className="absolute left-0 right-0 top-0 z-10 flex items-start justify-between px-3 pt-4">
         <div className="flex max-w-[70%] items-center gap-3 rounded-full bg-black/40 backdrop-blur-md px-3 py-2 border border-white/20 shadow">
           {item.avatarUrl ? (
             <Image src={item.avatarUrl} alt={item.username} width={40} height={40} className="h-10 w-10 rounded-full object-cover ring-2 ring-white/60" />
@@ -88,16 +89,16 @@ export default function ReelCard({ item, onToggleLike, liking, immersive }: Prop
             {liking && <span className="sr-only">Updating like</span>}
           </button>
         </div>
-      </div>
+      </div>}
       {/* Caption lower-left (keep readable, above bottom nav) */}
-      {item.caption && (
+      {item.caption && !overlaysHidden && (
         <div className="absolute left-3 bottom-24 z-10 max-w-[70%]">
           <p className="text-sm leading-snug text-white/95 whitespace-pre-wrap break-words drop-shadow-md">
             {item.caption}
           </p>
         </div>
       )}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
+      {!overlaysHidden && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />}
     </article>
   );
 }
