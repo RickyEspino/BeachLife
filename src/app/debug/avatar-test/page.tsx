@@ -40,8 +40,9 @@ export default function AvatarDebugPage() {
         const { data } = supabase.storage.from("avatars").getPublicUrl(path);
         setLog(`✅ Upload OK\npath=${path}\npublicUrl=${data.publicUrl}`);
       }
-    } catch (e: any) {
-      setLog(`Exception: ${e?.message ?? String(e)}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      setLog(`Exception: ${message}`);
     }
   }
 
