@@ -145,6 +145,13 @@ export default function Page() {
   const [strikeOn, setStrikeOn] = useState(false);
   const [soundReady, setSoundReady] = useState(false);
   const [combatText, setCombatText] = useState<Array<{ id: number; text: string; type: 'hit' | 'crit' | 'combo' | 'block'; created: number }>>([]);
+  // Combo meter & particles
+  const [comboCharge, setComboCharge] = useState(0); // 0..1 normalized
+  const [comboLevel, setComboLevel] = useState(0); // discrete tiers for styling
+  const [particles, setParticles] = useState<Array<{ id: number; x: number; y: number; hue: number; size: number; life: number; created: number }>>([]);
+  const comboRef = useRef(0); // current raw combo count
+  const comboExpireTimer = useRef<number | null>(null);
+  const nextParticleId = useRef(1);
   const comboCountRef = useRef(0);
   const lastHitTimeRef = useRef<number>(0);
   const nextIdRef = useRef(1);
@@ -273,6 +280,25 @@ export default function Page() {
       comboCountRef.current = 1;
     }
     lastHitTimeRef.current = now;
+    // update combo meter (charge grows with combo length, decays separately)
+    const raw = comboCountRef.current;
+    // Map combo length to charge using diminishing returns: charge += (1 - charge)*k
+    const gain = Math.min(0.12 + raw * 0.02, 0.35); // bigger chains give more per-hit
+    setComboCharge(prev => Math.min(1, prev + gain));
+    // tier thresholds for visuals
+    setComboLevel(prev => {
+      const tier = (raw >= 15) ? 4 : (raw >= 10) ? 3 : (raw >= 6) ? 2 : (raw >= 3) ? 1 : 0;
+      return tier;
+    });
+    comboRef.current = raw;
+    // reset expire timer
+    if (comboExpireTimer.current) clearTimeout(comboExpireTimer.current);
+    comboExpireTimer.current = window.setTimeout(() => {
+      comboCountRef.current = 0;
+      comboRef.current = 0;
+      setComboLevel(0);
+      setComboCharge(ch => ch * 0.5); // soften decay rather than full reset
+    }, 1400);
     const base = BASE_DAMAGE[part];
     // simple crit: 20% chance
     const isCrit = Math.random() < 0.2;
@@ -290,6 +316,31 @@ export default function Page() {
       ...prev,
       ...events.map(e => ({ id: nextIdRef.current++, text: e.text, type: e.type, created: Date.now() }))
     ]);
+
+    // spawn particle burst on certain milestones / crits
+    const shouldBurst = isCrit || raw === 3 || raw === 6 || raw === 10 || raw === 15 || raw % 20 === 0;
+    if (shouldBurst) {
+      const centerX = 50; // percent of stage width for mapping
+      const centerY = 38; // approximate HP bar area / crab top
+      const count = isCrit ? 14 : (raw >= 15 ? 18 : 8 + Math.min(raw, 10));
+      setParticles(prev => {
+        const nowMs = Date.now();
+        const list = [...prev];
+        for (let i = 0; i < count; i++) {
+          list.push({
+            id: nextParticleId.current++,
+            x: centerX + (Math.random() * 30 - 15),
+            y: centerY + (Math.random() * 10 - 5),
+            hue: isCrit ? 40 + Math.random()*20 : 300 + Math.random()*40,
+            size: isCrit ? 9 + Math.random()*6 : 6 + Math.random()*5,
+            life: 650 + Math.random()*400,
+            created: nowMs
+          });
+        }
+        // cap total to avoid runaway
+        return list.slice(-220);
+      });
+    }
   }, [flash]);
 
   const handleBlock = useCallback(() => {
@@ -312,6 +363,11 @@ export default function Page() {
     setPlayerHp(PLAYER_MAX);
     setBlocked(false);
     setBlockCd(false);
+    comboCountRef.current = 0;
+    comboRef.current = 0;
+    setComboLevel(0);
+    setComboCharge(0);
+    setParticles([]);
   }, []);
 
   // Attach hit handlers
@@ -334,6 +390,28 @@ export default function Page() {
   const bossPct = (bossHp / BOSS_MAX) * 100;
   const playerPct = (playerHp / PLAYER_MAX) * 100;
   const gameOver = bossHp <= 0 || playerHp <= 0;
+
+  // Passive combo charge decay
+  useEffect(() => {
+    if (!comboCharge) return;
+    const id = setInterval(() => {
+      setComboCharge(ch => {
+        if (ch <= 0.0001) return 0;
+        return Math.max(0, ch - 0.015); // slow bleed
+      });
+    }, 180);
+    return () => clearInterval(id);
+  }, [comboCharge]);
+
+  // Particle cleanup
+  useEffect(() => {
+    if (!particles.length) return;
+    const id = setTimeout(() => {
+      const now = Date.now();
+      setParticles(prev => prev.filter(p => now - p.created < p.life));
+    }, 400);
+    return () => clearTimeout(id);
+  }, [particles]);
 
   // Cleanup old combat text ( >1100ms )
   useEffect(() => {
@@ -431,6 +509,32 @@ export default function Page() {
             </span>
           </div>
 
+          {/* Combo meter below player HP bar */}
+          <div className="absolute bottom-16 left-4 right-4">
+            <div className="flex flex-col items-stretch gap-1">
+              <div className="h-3 rounded-full bg-white/5 ring-1 ring-white/10 overflow-hidden relative">
+                <div
+                  className={`h-full combo-fill transition-[width,filter] duration-150 ${comboLevel >= 3 ? 'glow-pulse' : ''}`}
+                  style={{
+                    width: `${Math.min(100, comboCharge * 100)}%`,
+                    background: `linear-gradient(90deg, rgba(255,60,60,0.85), rgba(255,160,0,0.9), rgba(255,255,255,0.95))`,
+                    filter: comboLevel >= 2 ? 'brightness(1.2) saturate(1.3)' : 'none'
+                  }}
+                />
+                {comboLevel >= 4 && (
+                  <div className="absolute inset-0 animate-[meter-shine_1.8s_linear_infinite] bg-[linear-gradient(120deg,transparent,rgba(255,255,255,0.5),transparent)] mix-blend-screen" />
+                )}
+              </div>
+              <div className="text-[10px] uppercase tracking-wider font-semibold flex justify-between text-white/70">
+                <span>Combo</span>
+                <span>
+                  {comboRef.current > 0 ? `${comboRef.current}x` : ''}
+                  {comboLevel >= 1 && `  Lv${comboLevel}`}
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Block badge */}
           <div className="absolute bottom-12 right-4">
             <div
@@ -464,6 +568,33 @@ export default function Page() {
 
           {/* Thunder audio (optional) */}
           <audio ref={thunderRef} preload="auto" src="/sfx/thunder.mp3" aria-hidden="true" />
+          {/* Particle layer */}
+          <div className="pointer-events-none absolute inset-0 z-30">
+            {particles.map(p => {
+              const age = Date.now() - p.created;
+              const prog = Math.min(1, age / p.life);
+              const scale = 0.4 + (1 - prog) * 0.8;
+              const fade = prog < 0.1 ? prog / 0.1 : 1 - (prog - 0.1) / 0.9;
+              const driftX = (prog ** 1.2) * (p.x < 50 ? -1 : 1) * 18;
+              const driftY = (prog ** 0.9) * -40;
+              return (
+                <span
+                  key={p.id}
+                  className="absolute block will-change-transform"
+                  style={{
+                    left: `${p.x}%`,
+                    top: `${p.y}%`,
+                    width: p.size,
+                    height: p.size,
+                    opacity: fade,
+                    background: `radial-gradient(circle, hsl(${p.hue} 90% 70%), hsl(${p.hue} 90% 45%) 60%, transparent)`,
+                    borderRadius: '50%',
+                    transform: `translate(-50%, -50%) translate(${driftX}px, ${driftY}px) scale(${scale}) rotate(${prog*540}deg)`
+                  }}
+                />
+              );
+            })}
+          </div>
           {!soundReady && (
             <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center">
               <div className="px-3 py-1 rounded-full text-[10px] font-medium bg-white/10 backdrop-blur-sm border border-white/15 animate-pulse">
@@ -572,6 +703,14 @@ export default function Page() {
           filter: brightness(1.15) saturate(1.1) drop-shadow(0 0 18px rgba(255,255,255,0.25));
         }
         .strike #crab svg #eyes { filter: drop-shadow(0 0 12px #ff2b2b); }
+
+        /* Combo meter shine */
+        @keyframes meter-shine {
+          0% { transform: translateX(-60%); }
+          100% { transform: translateX(120%); }
+        }
+        .glow-pulse { animation: glowPulse 1.3s ease-in-out infinite; }
+        @keyframes glowPulse { 0%,100% { filter: drop-shadow(0 0 4px rgba(255,180,0,0.6)); } 50% { filter: drop-shadow(0 0 10px rgba(255,255,255,0.9)); } }
       `}</style>
     </main>
   );
