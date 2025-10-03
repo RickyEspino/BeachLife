@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="1024" height="1024">
+  <defs>
+    <style>
+      :root {
+        --crab-base: #C73A29;
+        --crab-dark: #7A1F16;
+        --crab-light: #E55644;
+        --crown: #E2B300;
+        --crown-dark: #A47800;
+        --eye: #111111;
+        --glow: #FF4D3D;
+        --outline: #1A0E0C;
+      }
+      .base { fill: var(--crab-base); }
+      .dark { fill: var(--crab-dark); }
+      .light { fill: var(--crab-light); }
+      .crown { fill: var(--crown); }
+      .crown-dark { fill: var(--crown-dark); }
+      .eye { fill: var(--eye); }
+      .glow { fill: var(--glow); }
+      .stroke { stroke: var(--outline); stroke-width: 6; stroke-linejoin: round; stroke-linecap: round; }
+      .no-stroke { stroke: none; }
+      .shadow { opacity: .18; }
+    </style>
+    <filter id="innerGlow">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
+      <feComposite in="blur" in2="SourceAlpha" operator="arithmetic" k2="-1" k3="2" result="inner"/>
+      <feColorMatrix type="matrix"
+        values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 1 0" />
+    </filter>
+  </defs>
+
+  <!-- Ground shadow (optional; remove if you want a pure sticker/sprite) -->
+  <ellipse cx="256" cy="450" rx="170" ry="28" class="shadow no-stroke"/>
+
+  <!-- BODY -->
+  <g id="body">
+    <!-- carapace -->
+    <path class="base stroke" d="M96,250c0,-70 82,-120 160,-120s160,50 160,120c0,45 -35,85 -80,102l-18,7c-20,8 -42,12 -62,12s-42,-4 -62,-12l-18,-7c-45,-17 -80,-57 -80,-102z"/>
+    <!-- top spikes / intimidating edges -->
+    <path class="dark stroke" d="M128,230l-26,-22 34,-10 18,-30 32,18 40,-34 40,34 32,-18 18,30 34,10 -26,22" />
+    <!-- face plate -->
+    <path class="dark stroke" d="M156,290c24,-26 60,-38 100,-38s76,12 100,38c-14,34 -58,62 -100,62s-86,-28 -100,-62z"/>
+    <!-- highlights -->
+    <path class="light no-stroke" opacity=".2" d="M120,256c0,-56 72,-98 136,-98 44,0 104,16 134,56 -40,-46 -110,-68 -170,-52 -66,18 -100,62 -100,94z"/>
+  </g>
+
+  <!-- EYES -->
+  <g id="eyes">
+    <g id="leftEye">
+      <ellipse class="eye stroke" cx="196" cy="290" rx="20" ry="24"/>
+      <circle class="glow no-stroke" cx="196" cy="298" r="10" filter="url(#innerGlow)"/>
+      <circle fill="#FFFFFF" cx="204" cy="282" r="5"/>
+    </g>
+    <g id="rightEye">
+      <ellipse class="eye stroke" cx="316" cy="290" rx="20" ry="24"/>
+      <circle class="glow no-stroke" cx="316" cy="298" r="10" filter="url(#innerGlow)"/>
+      <circle fill="#FFFFFF" cx="324" cy="282" r="5"/>
+    </g>
+    <!-- scowl -->
+    <path class="eye stroke" d="M214,330c28,-10 56,-10 84,0"/>
+  </g>
+
+  <!-- CLAWS -->
+  <g id="claws">
+    <!-- left arm -->
+    <path class="dark stroke" d="M96,308c-28,-4 -56,10 -66,32 28,10 64,0 88,-20" />
+    <path class="base stroke" d="M92,320c-30,30 -40,62 -16,78 18,12 54,-8 82,-42 12,-14 22,-30 28,-46 -30,-12 -64,-10 -94,10z"/>
+    <!-- left pincer -->
+    <path class="base stroke" d="M160,300c-20,18 -20,46 -6,62 18,-10 36,-30 48,-50 -10,-16 -26,-20 -42,-12z"/>
+    <path class="dark stroke" d="M148,362c10,8 28,8 40,-2 4,-18 -8,-30 -22,-30 -12,0 -20,12 -18,32z"/>
+
+    <!-- right arm -->
+    <path class="dark stroke" d="M416,308c28,-4 56,10 66,32 -28,10 -64,0 -88,-20" />
+    <path class="base stroke" d="M420,320c30,30 40,62 16,78 -18,12 -54,-8 -82,-42 -12,-14 -22,-30 -28,-46 30,-12 64,-10 94,10z"/>
+    <!-- right pincer -->
+    <path class="base stroke" d="M352,300c20,18 20,46 6,62 -18,-10 -36,-30 -48,-50 10,-16 26,-20 42,-12z"/>
+    <path class="dark stroke" d="M364,362c-10,8 -28,8 -40,-2 -4,-18 8,-30 22,-30 12,0 20,12 18,32z"/>
+  </g>
+
+  <!-- LEGS -->
+  <g id="legs">
+    <path class="dark stroke" d="M136,356l-30,40"/>
+    <path class="dark stroke" d="M184,364l-16,48"/>
+    <path class="dark stroke" d="M328,364l16,48"/>
+    <path class="dark stroke" d="M376,356l30,40"/>
+  </g>
+
+  <!-- CROWN -->
+  <g id="crown" transform="translate(0,-6)">
+    <path class="crown stroke" d="M202,194l-22,60h152l-22,-60 -32,26 -22,-36 -22,36 -32,-26z"/>
+    <rect x="170" y="254" width="172" height="28" rx="8" class="crown-dark stroke"/>
+  </g>
+</svg>

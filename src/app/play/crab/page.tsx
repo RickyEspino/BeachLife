@@ -1,5 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import NextImage from "next/image";
 
 /**
  * King Crab: Tap Battle (30s) — with Sound Toggle + SFX
@@ -612,7 +613,7 @@ export default function Page() {
                       "radial-gradient(ellipse at 50% 40%, rgba(255,255,255,0.75), rgba(255,200,150,0.28))",
                   }}
                 >
-                  <CrabSVG
+                  <CrabGraphic
                     className="w-[70%] h-[70%] drop-shadow-[0_18px_30px_rgba(0,0,0,0.25)]"
                     lowHp={lowHp}
                   />
@@ -727,6 +728,23 @@ export default function Page() {
         .hp-bar-critical { animation: hpFlash 0.7s linear infinite; }
         @keyframes damageFlash { 0% { background: rgba(239,68,68,0); } 25% { background: rgba(239,68,68,0.35); } 100% { background: rgba(239,68,68,0); } }
         .animate-damageFlash { animation: damageFlash 0.18s ease; }
+        /* Custom animations: You can paste your additional keyframes/classes for the crab game here. */
+        /* King Crab external SVG animations (targeting element IDs inside the SVG) */
+        .crab-svg-inline svg { width: 100%; height: 100%; display: block; }
+        .crab-svg-inline #claws { transform-origin: 50% 70%; animation: flex 1.1s ease-in-out infinite; }
+        @keyframes flex { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(-3deg); } }
+        .crab-svg-inline #eyes { animation: pulse 1.2s ease-in-out infinite; }
+        @keyframes pulse { 0%,100% { filter: none; } 50% { filter: drop-shadow(0 0 6px #ff4d3d); } }
+        /* Low HP: intensify animations */
+        .lowhp.crab-svg-inline #claws { animation: flex-urgent 0.7s ease-in-out infinite; }
+        @keyframes flex-urgent { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(-8deg); } }
+        .lowhp.crab-svg-inline #eyes { animation: pulse-urgent 0.7s ease-in-out infinite; }
+        @keyframes pulse-urgent { 0%,100% { filter: none; } 50% { filter: drop-shadow(0 0 10px #ff4d3d) drop-shadow(0 0 4px #ff9a8f); } }
+        /* Respect reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+          .crab-svg-inline #claws, .crab-svg-inline #eyes,
+          .lowhp.crab-svg-inline #claws, .lowhp.crab-svg-inline #eyes { animation: none !important; }
+        }
       `}</style>
 
       {/* Fixed HUD Bars (top/bottom) */}
@@ -846,20 +864,69 @@ function CrabSVG({ className, lowHp }: { className?: string; lowHp?: boolean }) 
       {/* Dots on shell */}
       <circle cx="110" cy="110" r="4" fill="rgba(255,255,255,0.55)" />
       <circle cx="146" cy="116" r="3" fill="rgba(255,255,255,0.55)" />
-      <circle cx="128" cy="128" r="2.5" fill="rgba(255,255,255,0.55)" />
       {/* Eyes */}
-      <line x1="106" y1="84" x2="106" y2="100" stroke={eye} strokeWidth="4" />
-      <line x1="150" y1="84" x2="150" y2="100" stroke={eye} strokeWidth="4" />
-      <circle cx="106" cy="78" r="6" fill={eye} />
-      <circle cx="150" cy="78" r="6" fill={eye} />
+      <g id="eyes">
+        <line x1="106" y1="84" x2="106" y2="100" stroke={eye} strokeWidth="4" />
+        <line x1="150" y1="84" x2="150" y2="100" stroke={eye} strokeWidth="4" />
+        <circle cx="106" cy="78" r="6" fill={eye} />
+        <circle cx="150" cy="78" r="6" fill={eye} />
+      </g>
       {/* Legs */}
       <path d="M60 140 l-24 8" stroke={claw} strokeWidth="8" strokeLinecap="round" />
       <path d="M68 156 l-26 14" stroke={claw} strokeWidth="8" strokeLinecap="round" />
       <path d="M196 140 l24 8" stroke={claw} strokeWidth="8" strokeLinecap="round" />
-      <path d="M188 156 l26 14" stroke={claw} strokeWidth="8" strokeLinecap="round" />
       {/* Claws */}
-      <path d="M68 110 q-20 -16 -30 -30 q20 2 30 12 q2 -10 8 -18 q2 14 -8 36 z" fill={claw} />
-      <path d="M188 110 q20 -16 30 -30 q-20 2 -30 12 q-2 -10 -8 -18 q-2 14 8 36 z" fill={claw} />
+      <g id="claws">
+        <path d="M68 110 q-20 -16 -30 -30 q20 2 30 12 q2 -10 8 -18 q2 14 8 36 z" fill={claw} />
+        <path d="M188 110 q20 -16 30 -30 q-20 2 -30 12 q-2 -10 -8 -18 q-2 14 8 36 z" fill={claw} />
+      </g>
     </svg>
   );
+}
+
+// CrabGraphic: renders an external image if configured, otherwise falls back to the inline CrabSVG.
+// How to swap the crab image:
+// 1) Add your image to the public folder, e.g. public/img/play/kingcrab_boss.svg (or .png/.webp)
+// 2) Set NEXT_PUBLIC_CRAB_IMAGE to the public path (e.g. "/img/play/kingcrab_boss.svg"), or
+//    change the DEFAULT_CRAB_IMAGE below.
+// 3) If the file is an SVG, it's inlined so page CSS can target #claws and #eyes.
+const DEFAULT_CRAB_IMAGE = "/img/play/kingcrab_boss.svg"; // place file at public/img/play/kingcrab_boss.svg
+
+function CrabGraphic({ className, lowHp }: { className?: string; lowHp?: boolean }) {
+  const src = process.env.NEXT_PUBLIC_CRAB_IMAGE || DEFAULT_CRAB_IMAGE;
+  if (src && src.toLowerCase().endsWith('.svg')) {
+    return <InlineSvg className={`${lowHp ? 'lowhp ' : ''}crab-svg-inline ${className || ''}`} src={src} />;
+  }
+  if (src) {
+    return (
+      <span className={`${lowHp ? 'lowhp ' : ''}${className || ''}`}>
+        <NextImage
+          src={src}
+          alt="Crab"
+          width={512}
+          height={512}
+          className="h-full w-full object-contain select-none"
+          priority
+        />
+      </span>
+    );
+  }
+  return (
+    <span className={`${lowHp ? 'lowhp ' : ''}crab-svg-inline ${className || ''}`}>
+      <CrabSVG className="h-full w-full" lowHp={lowHp} />
+    </span>
+  );
+}
+
+function InlineSvg({ src, className }: { src: string; className?: string }) {
+  const [markup, setMarkup] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let canceled = false;
+    fetch(src)
+      .then((r) => r.text())
+      .then((t) => { if (!canceled) setMarkup(t); })
+      .catch(() => { if (!canceled) setMarkup(null); });
+    return () => { canceled = true; };
+  }, [src]);
+  return <span className={className} dangerouslySetInnerHTML={markup ? { __html: markup } : undefined} />;
 }
