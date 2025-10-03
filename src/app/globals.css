@@ -29,3 +29,7 @@ html, body { height: 100%; }
 @layer components {
   /* Removed tab styling - using only icons now */
 }
+
+/* Mapbox customizations */
+/* Hide default user location dot (we render a custom avatar marker) but keep accuracy circle */
+.mapboxgl-user-location-dot { display: none !important; }

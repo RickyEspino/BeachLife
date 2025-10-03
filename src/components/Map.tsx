@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, { Marker, Popup, ViewState, GeolocateControl } from 'react-map-gl/mapbox';
 // removed avatar Image for user marker; using GeolocateControl's built-in indicator
@@ -19,6 +19,7 @@ export type MerchantPin = BasePin & {
 };
 
 const FALLBACK_BEACHES: Beach[] = [
+  // Modest geographic spread — could be replaced with real seed beaches
   { id: 'santa-monica', name: 'Santa Monica Beach', latitude: 34.0195, longitude: -118.4912 },
   { id: 'venice', name: 'Venice Beach', latitude: 33.9850, longitude: -118.4695 },
   { id: 'manhattan', name: 'Manhattan Beach', latitude: 33.8847, longitude: -118.4109 },
@@ -30,60 +31,33 @@ type Props = {
   initialView?: { latitude: number; longitude: number; zoom?: number };
   focusId?: string;
   showUserLocation?: boolean;
+  userAvatarUrl?: string;
 };
 
-export default function MapComponent({ merchants = [], loadError, initialView, focusId, showUserLocation = false }: Props) {
-  // Myrtle Beach default center (approx)
+export default function MapComponent({ merchants = [], loadError, initialView, focusId, showUserLocation = false, userAvatarUrl }: Props) {
+  // Derive starting center: provided initialView > merchants centroid > fallback beaches[0]
+  const centroid = useMemo(() => {
+    if (!merchants.length) return null;
+    const sum = merchants.reduce((acc, m) => {
+      acc.lat += m.latitude; acc.lng += m.longitude; return acc;
+    }, { lat: 0, lng: 0 });
+    return { latitude: sum.lat / merchants.length, longitude: sum.lng / merchants.length };
+  }, [merchants]);
+
+  const fallbackOrigin = FALLBACK_BEACHES[0];
+
   const [viewState, setViewState] = useState<Partial<ViewState>>(() => ({
-    longitude: initialView?.longitude ?? -78.8803,
-    latitude: initialView?.latitude ?? 33.6954,
-    zoom: initialView?.zoom ?? 12,
+    longitude: initialView?.longitude ?? centroid?.longitude ?? fallbackOrigin.longitude,
+    latitude: initialView?.latitude ?? centroid?.latitude ?? fallbackOrigin.latitude,
+    zoom: initialView?.zoom ?? (initialView ? (initialView.zoom ?? 14) : merchants.length ? 13 : 11),
   }));
 
-  const [beaches] = useState<Beach[]>(FALLBACK_BEACHES); // retained for now
+  // Static beaches constant (no state re-render churn)
+  const beaches = FALLBACK_BEACHES;
   const [selected, setSelected] = useState<BasePin | MerchantPin | null>(null);
   const [userPos, setUserPos] = useState<{ latitude: number; longitude: number; accuracy?: number } | null>(null);
-  // internal flag not exposed; we removed manual button so locating UI not needed
-  const [locating, setLocating] = useState(false);
   const [geoDenied, setGeoDenied] = useState(false);
-  // Locator is now on-demand only; no persistent watch.
-
-  // Auto attempt a single locate on mount (or when showUserLocation toggles on)
-  useEffect(() => {
-    if (!showUserLocation) return;
-  if (userPos || locating) return; // already have or currently fetching
-    // If Permissions API available, only auto-run if granted or prompt (avoid denied spam)
-    let cancelled = false;
-    (async () => {
-      try {
-        if (navigator.permissions) {
-          const status = await navigator.permissions.query({ name: 'geolocation' });
-          if (status.state === 'denied') return; // don't auto ask if denied
-        }
-        if (!cancelled) handleLocate();
-      } catch {}
-    })();
-    return () => { cancelled = true; };
-  }, [showUserLocation, userPos, locating]);
-
-  function handleLocate() {
-    if (!navigator.geolocation) return;
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude, accuracy } = pos.coords;
-        const newPos = { latitude, longitude, accuracy };
-        setUserPos(newPos);
-        setViewState((v) => ({ ...v, latitude, longitude }));
-        setLocating(false);
-      },
-      (err) => {
-        if (err.code === err.PERMISSION_DENIED) setGeoDenied(true);
-        setLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-    );
-  }
+  // Removed auto locate effect; rely solely on GeolocateControl interaction for clarity.
 
   // Auto focus a merchant if focusId provided
   useEffect(() => {
@@ -91,12 +65,17 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
     const target = merchants.find(m => m.id === focusId);
     if (target) {
       setSelected(target);
-      setViewState(v => ({ ...v, latitude: target.latitude, longitude: target.longitude }));
+      setViewState(v => ({
+        ...v,
+        latitude: target.latitude,
+        longitude: target.longitude,
+        zoom: Math.max((v.zoom as number) || 0, 14) // ensure a reasonable focus zoom
+      }));
     }
   }, [focusId, merchants]);
 
   return (
-    <div className="fixed inset-0">{/* fill viewport */}
+    <div className="fixed inset-0" role="region" aria-label="Interactive map of merchants and beaches">
       <Map
         {...viewState}
         onMove={(evt) => setViewState(evt.viewState)}
@@ -104,6 +83,11 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
         style={{ width: '100%', height: '100%' }}
         mapStyle="mapbox://styles/mapbox/streets-v11"
       >
+        {!process.env.NEXT_PUBLIC_MAPBOX_TOKEN && (
+          <div className="absolute left-2 top-2 z-10 rounded bg-red-600/90 px-3 py-1 text-[10px] font-medium text-white">
+            Missing Mapbox token
+          </div>
+        )}
         {/* Merchant pins */}
         {merchants.map(m => (
           <Marker key={m.id} longitude={m.longitude} latitude={m.latitude} anchor="bottom">
@@ -122,6 +106,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
           <Marker key={b.id} longitude={b.longitude} latitude={b.latitude} anchor="bottom">
             <button
               className="text-2xl"
+              aria-label={`Beach: ${b.name}`}
               onClick={(e) => { e.preventDefault(); setSelected(b); }}
             >
               📍
@@ -153,7 +138,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
         {/* Using GeolocateControl's built-in indicator + accuracy circle; custom marker removed */}
 
         {showUserLocation && geoDenied && !userPos && (
-          <div className="absolute left-2 top-10 rounded bg-yellow-500/90 px-3 py-1 text-[10px] font-medium text-white">
+          <div className="absolute left-2 top-10 rounded bg-yellow-500/90 px-3 py-1 text-[10px] font-medium text-white" role="alert">
             Location blocked
           </div>
         )}
@@ -165,14 +150,34 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
                 trackUserLocation={false}
                 showUserHeading={false}
                 showAccuracyCircle={true}
+                positionOptions={{ enableHighAccuracy: true, timeout: 8000 }}
                 onGeolocate={(e) => {
                   const { latitude, longitude, accuracy } = e.coords;
                   setUserPos({ latitude, longitude, accuracy });
                   setViewState((v) => ({ ...v, latitude, longitude }));
+                  setGeoDenied(false);
+                }}
+                onError={(err) => {
+                  if (err.code === err.PERMISSION_DENIED) setGeoDenied(true);
                 }}
               />
             </div>
           </div>
+        )}
+
+        {/* Custom user avatar marker (overrides Geolocate Control's blue dot). We still rely on the control for accuracy circle & permission handling. */}
+        {showUserLocation && userPos && userAvatarUrl && (
+          <Marker longitude={userPos.longitude} latitude={userPos.latitude} anchor="center">
+            <div className="relative -translate-y-1 -translate-x-1">
+              <img
+                src={userAvatarUrl}
+                alt="Your avatar location"
+                className="h-10 w-10 rounded-full ring-2 ring-white shadow object-cover"
+                draggable={false}
+              />
+              <span className="absolute inset-0 rounded-full ring ring-blue-500/40 animate-pulse pointer-events-none" aria-hidden="true" />
+            </div>
+          </Marker>
         )}
 
       </Map>

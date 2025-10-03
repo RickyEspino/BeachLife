@@ -14,8 +14,17 @@ export default async function Page({ searchParams }: { searchParams?: Record<str
     .not('longitude', 'is', null)
     .limit(500);
 
-  // Load current user profile for avatar (ignore errors silently)
-  // Current user not needed for map rendering; skip avatar fetch
+  // Current user profile (avatar) – optional
+  const { data: { user } } = await supabase.auth.getUser();
+  let userAvatarUrl: string | undefined;
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('avatar_url')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (profile?.avatar_url) userAvatarUrl = profile.avatar_url as string;
+  }
 
   // Filter & narrow type
   const merchants: MerchantPin[] = (data || [])
@@ -50,6 +59,7 @@ export default async function Page({ searchParams }: { searchParams?: Record<str
         initialView={initialView}
         focusId={focus}
         showUserLocation
+        userAvatarUrl={userAvatarUrl}
       />
       <MapCategoryOverlay categories={categories} />
     </section>
