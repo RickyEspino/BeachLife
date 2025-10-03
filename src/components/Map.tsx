@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, { Marker, Popup, ViewState, MapRef } from 'react-map-gl/mapbox';
@@ -56,6 +57,7 @@ type Cluster = {
 };
 
 export default function MapComponent({ merchants = [], loadError, initialView, focusId, showUserLocation = false, userAvatarUrl, sharedUsers = [] }: Props) {
+  const router = useRouter();
   const [mapRef, setMapRef] = useState<MapRef | null>(null);
   // Derive starting center: provided initialView > merchants centroid > fallback beaches[0]
   const centroid = useMemo(() => {
@@ -79,6 +81,9 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
   const [selected, setSelected] = useState<BasePin | MerchantPin | null>(null);
   const [userPos, setUserPos] = useState<{ latitude: number; longitude: number; accuracy?: number } | null>(null);
   const [geoDenied, setGeoDenied] = useState(false);
+  // Special event: ephemeral King Crab spawn near user (client-side prototype)
+  const [crabEvent, setCrabEvent] = useState<null | { latitude: number; longitude: number; expiresAt: number }>(null);
+  const [crabCountdown, setCrabCountdown] = useState<number>(0);
   // One-shot geolocation (no UI control) — attempts once when showUserLocation is true.
   useEffect(() => {
     if (!showUserLocation) return;
@@ -93,6 +98,43 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
       if (err.code === err.PERMISSION_DENIED) setGeoDenied(true);
     }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
   }, [showUserLocation, userPos]);
+
+  // Generate / refresh crab event once user position known
+  useEffect(() => {
+    if (!showUserLocation) return;
+    if (!userPos) return;
+    const now = Date.now();
+    if (crabEvent && crabEvent.expiresAt > now) return; // still active
+    // Create a spawn 40–90m away in a random direction to encourage micro-movement.
+    const distanceM = 40 + Math.random() * 50; // 40-90m
+    const bearing = Math.random() * Math.PI * 2;
+    const metersPerDegLat = 111_111; // approx
+    const metersPerDegLng = 111_111 * Math.cos(userPos.latitude * Math.PI / 180);
+    const dLat = (Math.sin(bearing) * distanceM) / metersPerDegLat;
+    const dLng = (Math.cos(bearing) * distanceM) / metersPerDegLng;
+    const spawn = {
+      latitude: userPos.latitude + dLat,
+      longitude: userPos.longitude + dLng,
+      expiresAt: now + 5 * 60 * 1000 // 5 minutes
+    };
+    setCrabEvent(spawn);
+  }, [showUserLocation, userPos, crabEvent]);
+
+  // Countdown effect
+  useEffect(() => {
+    if (!crabEvent) { setCrabCountdown(0); return; }
+    const tick = () => {
+      const rem = Math.max(0, Math.ceil((crabEvent.expiresAt - Date.now()) / 1000));
+      setCrabCountdown(rem);
+      if (rem === 0) {
+        // Auto-clear so it can respawn if user moves (or refreshes) later
+        setCrabEvent(null);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [crabEvent]);
 
   // Auto focus a merchant if focusId provided
   useEffect(() => {
@@ -371,6 +413,26 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
                 </div>
               ) : null}
             </div>
+          </Marker>
+        )}
+
+        {/* Special Event: King Crab Spawn (prototype) */}
+        {crabEvent && (
+          <Marker longitude={crabEvent.longitude} latitude={crabEvent.latitude} anchor="center">
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); router.push('/play/crab?event=king-crab'); }}
+              aria-label="King Crab special event battle"
+              className="group relative h-14 w-14 -mt-4 -ml-4 flex items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-pink-500 shadow-xl ring-4 ring-white/70 hover:scale-110 active:scale-95 transition"
+            >
+              <span className="text-3xl drop-shadow-sm">🦀</span>
+              <span className="pointer-events-none absolute -inset-1 rounded-full animate-ping bg-amber-400/30" aria-hidden="true" />
+              {crabCountdown > 0 && (
+                <span className="absolute -bottom-5 text-[10px] font-semibold tracking-wide px-2 py-0.5 rounded-full bg-black/70 text-white">
+                  {crabCountdown}s
+                </span>
+              )}
+            </button>
           </Marker>
         )}
 
