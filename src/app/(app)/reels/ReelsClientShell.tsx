@@ -27,14 +27,17 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
 
   return (
     <div className="relative h-[100dvh] w-full bg-black overflow-hidden">
-      <ReelsFeed initial={initial} initialNextCursor={initialNextCursor} />
+      {/* Feed layer below nav & FAB */}
+      <div className="absolute inset-0 z-0">
+        <ReelsFeed initial={initial} initialNextCursor={initialNextCursor} />
+      </div>
 
       {/* Floating Action Button (styled like BottomTabs pill) */}
       <button
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Create Reel"
-        className="group fixed bottom-24 right-4 z-40 h-14 w-14 rounded-full bg-white/80 supports-[backdrop-filter]:bg-white/60 backdrop-blur-md border border-white/60 shadow-lg flex items-center justify-center active:scale-95 transition focus:outline-none focus:ring-2 focus:ring-blue-500/70 text-gray-800 hover:text-gray-900"
+        className="group fixed bottom-[110px] right-4 z-[55] h-14 w-14 rounded-full bg-white/80 supports-[backdrop-filter]:bg-white/60 backdrop-blur-md border border-white/60 shadow-lg flex items-center justify-center active:scale-95 transition focus:outline-none focus:ring-2 focus:ring-blue-500/70 text-gray-800 hover:text-gray-900"
       >
         <span className="text-[26px] leading-none -mt-px">＋</span>
         <span className="pointer-events-none absolute -bottom-5 text-[10px] font-medium tracking-wide text-gray-200 opacity-0 group-hover:opacity-100 transition select-none">Create</span>
@@ -44,7 +47,7 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
       {/* Slide-over Panel */}
       <div
         aria-hidden={!open}
-        className={`pointer-events-none fixed inset-0 z-50 flex justify-end transition ${open ? '': ''}`}
+        className={`pointer-events-none fixed inset-0 z-[70] flex justify-end transition ${open ? '': ''}`}
       >
         {/* Backdrop */}
         <div

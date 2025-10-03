@@ -52,12 +52,12 @@ export default function ReelCard({ item, onToggleLike }: Props) {
             <time className="text-[10px] uppercase tracking-wide text-white/70" dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleDateString(undefined,{ month:'short', day:'numeric'})}</time>
           </div>
         </div>
-        <div className="flex flex-col items-center gap-1">
+        <div className="flex flex-col items-center gap-1 z-[60] pointer-events-auto">
           <button
             type="button"
             onClick={() => onToggleLike?.(item.id, liked)}
             aria-label={liked ? 'Unlike' : 'Like'}
-            className={`group relative h-12 w-12 rounded-full flex items-center justify-center transition active:scale-90 border ${liked ? 'bg-rose-600 border-rose-400/50' : 'bg-black/40 backdrop-blur border-white/25'} shadow`}
+            className={`group relative h-12 w-12 rounded-full flex items-center justify-center transition active:scale-90 border ${liked ? 'bg-rose-600 border-rose-400/50' : 'bg-black/40 backdrop-blur border-white/25'} shadow focus:outline-none focus:ring-2 focus:ring-white/60`}
           >
             <span className={`text-xl drop-shadow ${liked ? 'text-white' : 'text-white/90 group-hover:scale-110 transition-transform'}`}>{liked ? '❤️' : '🤍'}</span>
             <span className="absolute -bottom-4 text-[10px] font-medium text-white tabular-nums">{likeCount}</span>
