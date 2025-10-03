@@ -18,6 +18,7 @@ export default function CreateReel({ onCreated }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const reset = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
     setFileName(null); setPreviewUrl(null); setCaption(''); setError(null);
   };
 
@@ -32,30 +33,42 @@ export default function CreateReel({ onCreated }: Props) {
       setError('Image too large (max 10MB)');
       return;
     }
-    setFileName(file.name);
-    setPreviewUrl(URL.createObjectURL(file));
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  setFileName(file.name);
+  setPreviewUrl(URL.createObjectURL(file));
   };
 
   const compressToWebP = (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const rawImg: HTMLImageElement = document.createElement('img');
+      let tmpUrl: string | null = null;
       rawImg.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX = 2160; // cap dimension
-        let { width, height } = rawImg;
-        if (width > height && width > MAX) { height = Math.round(height * (MAX / width)); width = MAX; }
-        else if (height > MAX) { width = Math.round(width * (MAX / height)); height = MAX; }
-        canvas.width = width; canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return reject(new Error('Canvas unsupported'));
-        ctx.drawImage(rawImg, 0, 0, width, height);
-        canvas.toBlob((blob) => {
-          if (!blob) return reject(new Error('Compression failed'));
-          resolve(blob);
-        }, 'image/webp', 0.85);
+        try {
+          const canvas = document.createElement('canvas');
+          const MAX = 2160; // cap dimension
+          let { width, height } = rawImg;
+          if (width > height && width > MAX) { height = Math.round(height * (MAX / width)); width = MAX; }
+          else if (height > MAX) { width = Math.round(width * (MAX / height)); height = MAX; }
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return reject(new Error('Canvas unsupported'));
+          ctx.drawImage(rawImg, 0, 0, width, height);
+          canvas.toBlob((blob) => {
+            if (tmpUrl) { URL.revokeObjectURL(tmpUrl); tmpUrl = null; }
+            if (!blob) return reject(new Error('Compression failed'));
+            resolve(blob);
+          }, 'image/webp', 0.85);
+        } catch (err) {
+          if (tmpUrl) { URL.revokeObjectURL(tmpUrl); tmpUrl = null; }
+          reject(err instanceof Error ? err : new Error('Compression error'));
+        }
       };
-      rawImg.onerror = () => reject(new Error('Image load error'));
-      rawImg.src = URL.createObjectURL(file);
+      rawImg.onerror = () => {
+        if (tmpUrl) { URL.revokeObjectURL(tmpUrl); tmpUrl = null; }
+        reject(new Error('Image load error'));
+      };
+      tmpUrl = URL.createObjectURL(file);
+      rawImg.src = tmpUrl;
     });
   };
 
@@ -86,7 +99,10 @@ export default function CreateReel({ onCreated }: Props) {
   return (
     <div className="w-full max-w-sm mx-auto p-4 space-y-4 bg-white/90 backdrop-blur rounded-md shadow border border-gray-200">
       <h2 className="text-sm font-semibold tracking-wide text-gray-800">Create Reel</h2>
-      <input ref={inputRef} type="file" accept="image/*" onChange={onFileChange} className="block w-full text-xs" />
+      <label className="block text-[11px] font-medium text-gray-600">Media
+        <input ref={inputRef} type="file" accept="image/*" onChange={onFileChange} className="mt-1 block w-full text-xs" aria-describedby="reel-media-hint" />
+      </label>
+      <p id="reel-media-hint" className="text-[10px] text-gray-500 -mt-1">High-res image, max 10MB. Auto compressed to WebP.</p>
       {previewUrl && (
         <div className="relative aspect-[9/16] w-28 overflow-hidden rounded bg-gray-200">
           <Image
@@ -112,7 +128,11 @@ export default function CreateReel({ onCreated }: Props) {
         <span>{caption.length}/300</span>
         {uploading && <span className="animate-pulse">Uploading…</span>}
       </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div aria-live="polite" className="sr-only">
+        {uploading ? 'Uploading reel' : ''}
+        {error ? `Error: ${error}` : ''}
+      </div>
+      {error && <p className="text-xs text-red-600" role="alert">{error}</p>}
       <div className="flex gap-2">
         <button
           type="button"

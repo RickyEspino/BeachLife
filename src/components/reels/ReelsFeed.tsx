@@ -16,6 +16,7 @@ export default function ReelsFeed({ initial, initialNextCursor }: Props) {
   const [items, setItems] = useState<ReelItem[]>(initial);
   const [nextCursor, setNextCursor] = useState<string | undefined>(initialNextCursor);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [likingIds, setLikingIds] = useState<Set<number | string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const reachedEnd = !nextCursor;
@@ -27,42 +28,63 @@ export default function ReelsFeed({ initial, initialNextCursor }: Props) {
   const handleToggleLike = async (id: number | string, currentlyLiked: boolean) => {
     const numericId = typeof id === 'string' ? Number(id) : id;
     if (!Number.isFinite(numericId)) return;
-    // optimistic
-    updateItem(id, { liked: !currentlyLiked, likeCount: (items.find(i => i.id === id)?.likeCount || 0) + (currentlyLiked ? -1 : 1) });
+    if (likingIds.has(id)) return; // prevent double taps while in-flight
+    setLikingIds(prev => new Set(prev).add(id));
+    // optimistic functional update ensures no stale closure
+    setItems(prev => prev.map(it => {
+      if (it.id !== id) return it;
+      const delta = currentlyLiked ? -1 : 1;
+      const nextCount = Math.max(0, it.likeCount + delta);
+      return { ...it, liked: !currentlyLiked, likeCount: nextCount };
+    }));
     try {
       const method = currentlyLiked ? 'DELETE' : 'POST';
       const res = await fetch(`/api/reels/${numericId}/like`, { method });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
-      if (typeof data.likeCount === 'number') {
-        updateItem(id, { likeCount: data.likeCount, liked: data.liked });
-      } else {
-        updateItem(id, { liked: data.liked });
-      }
+      setItems(prev => prev.map(it => it.id === id ? {
+        ...it,
+        liked: typeof data.liked === 'boolean' ? data.liked : it.liked,
+        likeCount: typeof data.likeCount === 'number' ? data.likeCount : it.likeCount
+      } : it));
     } catch {
       // rollback
-      updateItem(id, { liked: currentlyLiked, likeCount: (items.find(i => i.id === id)?.likeCount || 0) + (currentlyLiked ? 1 : -1) });
+      setItems(prev => prev.map(it => {
+        if (it.id !== id) return it;
+        const delta = currentlyLiked ? 1 : -1; // undo previous
+        const nextCount = Math.max(0, it.likeCount + delta);
+        return { ...it, liked: currentlyLiked, likeCount: nextCount };
+      }));
     }
+      setLikingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
   };
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     setError(null);
+    const controller = new AbortController();
     try {
       const url = new URL('/api/reels', window.location.origin);
       url.searchParams.set('limit', '10');
       url.searchParams.set('cursor', nextCursor);
-      const res = await fetch(url.toString(), { cache: 'no-store' });
+      const res = await fetch(url.toString(), { cache: 'no-store', signal: controller.signal });
       if (!res.ok) throw new Error(`Fetch ${res.status}`);
       const json: FeedResponse = await res.json();
       setItems(prev => [...prev, ...json.items]);
       setNextCursor(json.nextCursor);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      if ((e as Error).name !== 'AbortError') {
+        setError(e instanceof Error ? e.message : 'Failed');
+      }
     } finally {
       setLoadingMore(false);
     }
+    return () => controller.abort();
   }, [nextCursor, loadingMore]);
 
   // IntersectionObserver to trigger loadMore
@@ -85,7 +107,10 @@ export default function ReelsFeed({ initial, initialNextCursor }: Props) {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as ReelItem | undefined;
       if (!detail) return;
-      setItems(prev => [detail, ...prev]);
+      setItems(prev => {
+        if (prev.find(r => r.id === detail.id)) return prev; // avoid duplicates
+        return [detail, ...prev];
+      });
     };
     window.addEventListener('reel:created', handler as EventListener);
     return () => window.removeEventListener('reel:created', handler as EventListener);
@@ -94,14 +119,17 @@ export default function ReelsFeed({ initial, initialNextCursor }: Props) {
   return (
     <div className="relative h-[100dvh] w-full overflow-y-scroll snap-y snap-mandatory scrollbar-none bg-black">
       {items.map(item => (
-        <ReelCard key={item.id} item={item} onToggleLike={handleToggleLike} />
+        <ReelCard key={item.id} item={item} onToggleLike={handleToggleLike} liking={likingIds.has(item.id)} />
       ))}
       <div ref={sentinelRef} />
       <div className="absolute left-2 top-2 z-20 text-[10px] rounded bg-black/50 text-white px-2 py-1">
         {items.length} reels
       </div>
+      <div aria-live="polite" className="sr-only">
+        {loadingMore ? 'Loading more reels' : ''}
+      </div>
       {loadingMore && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs text-white/70 animate-pulse">Loading…</div>
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs text-white/70 animate-pulse" role="status" aria-label="Loading more reels">Loading…</div>
       )}
       {error && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs text-red-400">{error}</div>

@@ -18,9 +18,10 @@ interface Props {
   item: ReelItem;
   onToggleLike?: (id: number | string, currentLiked: boolean) => void;
   onVisible?: (id: string | number) => void; // future use
+  liking?: boolean; // in-flight like/unlike to prevent spamming
 }
 
-export default function ReelCard({ item, onToggleLike }: Props) {
+export default function ReelCard({ item, onToggleLike, liking }: Props) {
   const [loaded, setLoaded] = useState(false);
   const liked = !!item.liked;
   const likeCount = item.likeCount;
@@ -57,10 +58,12 @@ export default function ReelCard({ item, onToggleLike }: Props) {
             type="button"
             onClick={() => onToggleLike?.(item.id, liked)}
             aria-label={liked ? 'Unlike' : 'Like'}
-            className={`group relative h-12 w-12 rounded-full flex items-center justify-center transition active:scale-90 border ${liked ? 'bg-rose-600 border-rose-400/50' : 'bg-black/40 backdrop-blur border-white/25'} shadow focus:outline-none focus:ring-2 focus:ring-white/60`}
+            disabled={liking}
+            className={`group relative h-12 w-12 rounded-full flex items-center justify-center transition active:scale-90 border ${liked ? 'bg-rose-600 border-rose-400/50' : 'bg-black/40 backdrop-blur border-white/25'} shadow focus:outline-none focus:ring-2 focus:ring-white/60 disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             <span className={`text-xl drop-shadow ${liked ? 'text-white' : 'text-white/90 group-hover:scale-110 transition-transform'}`}>{liked ? '❤️' : '🤍'}</span>
             <span className="absolute -bottom-4 text-[10px] font-medium text-white tabular-nums">{likeCount}</span>
+            {liking && <span className="sr-only">Updating like</span>}
           </button>
         </div>
       </div>
