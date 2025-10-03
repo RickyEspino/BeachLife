@@ -20,6 +20,7 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
   const [immersive, setImmersive] = useState(false);
   const touchStartY = useRef<number | null>(null);
   const touchDelta = useRef<number>(0);
+  const touchStartTime = useRef<number>(0);
   const fabRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -78,6 +79,7 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
     if (e.touches.length !== 1) return;
     touchStartY.current = e.touches[0].clientY;
     touchDelta.current = 0;
+    touchStartTime.current = Date.now();
   };
   const onTouchMove = (e: React.TouchEvent) => {
     if (touchStartY.current == null) return;
@@ -94,9 +96,13 @@ export default function ReelsClientShell({ initial, initialNextCursor }: Props) 
     touchDelta.current = 0;
   };
 
+  const onContainerClick = () => {
+    if (immersive) setImmersive(false);
+  };
+
   return (
     <div className="relative w-full bg-black" style={{ height: 'calc(var(--vh, 1vh) * 100)' }}>
-      <ReelsFeed initial={initial} initialNextCursor={initialNextCursor} immersive={immersive} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} />
+  <ReelsFeed initial={initial} initialNextCursor={initialNextCursor} immersive={immersive} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onClick={onContainerClick} />
 
       {/* Creation actions */}
       {!immersive && (

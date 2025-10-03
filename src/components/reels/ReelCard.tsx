@@ -1,6 +1,6 @@
 "use client";
 import Image from 'next/image';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 export interface ReelItem {
   id: number | string;
@@ -24,10 +24,31 @@ interface Props {
 
 export default function ReelCard({ item, onToggleLike, liking, immersive }: Props) {
   const [loaded, setLoaded] = useState(false);
+  const lastTapRef = useRef<number>(0);
   const liked = !!item.liked;
   const likeCount = item.likeCount;
+  const handleDoubleTap = () => {
+    if (!immersive) return;
+    onToggleLike?.(item.id, liked);
+  };
+  const onTouchEnd = () => {
+    if (!immersive) return;
+    const now = Date.now();
+    const delta = now - lastTapRef.current;
+    if (delta < 300) {
+      lastTapRef.current = 0;
+      handleDoubleTap();
+    } else {
+      lastTapRef.current = now;
+    }
+  };
   return (
-  <article className="relative w-full flex-shrink-0 snap-start overflow-hidden bg-black" style={{ height: 'calc(var(--vh, 1vh) * 100)' }}>
+    <article
+      className="relative w-full flex-shrink-0 snap-start overflow-hidden bg-black"
+      style={{ height: 'calc(var(--vh, 1vh) * 100)' }}
+      onDoubleClick={handleDoubleTap}
+      onTouchEnd={onTouchEnd}
+    >
       <Image
         src={item.imageUrl}
         alt={item.caption || 'BeachLife reel'}
@@ -39,8 +60,8 @@ export default function ReelCard({ item, onToggleLike, liking, immersive }: Prop
       />
       {!loaded && <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-gray-800 to-gray-700" />}
       {/* Top gradient + overlay container */}
-      {!immersive && <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/70 via-black/30 to-transparent" />}
-      {!immersive && <div className="absolute left-0 right-0 top-0 z-10 flex items-start justify-between px-3 pt-4">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/70 via-black/30 to-transparent" />
+      <div className="absolute left-0 right-0 top-0 z-10 flex items-start justify-between px-3 pt-4">
         <div className="flex max-w-[70%] items-center gap-3 rounded-full bg-black/40 backdrop-blur-md px-3 py-2 border border-white/20 shadow">
           {item.avatarUrl ? (
             <Image src={item.avatarUrl} alt={item.username} width={40} height={40} className="h-10 w-10 rounded-full object-cover ring-2 ring-white/60" />
@@ -67,16 +88,16 @@ export default function ReelCard({ item, onToggleLike, liking, immersive }: Prop
             {liking && <span className="sr-only">Updating like</span>}
           </button>
         </div>
-      </div>}
+      </div>
       {/* Caption lower-left (keep readable, above bottom nav) */}
-      {item.caption && !immersive && (
+      {item.caption && (
         <div className="absolute left-3 bottom-24 z-10 max-w-[70%]">
           <p className="text-sm leading-snug text-white/95 whitespace-pre-wrap break-words drop-shadow-md">
             {item.caption}
           </p>
         </div>
       )}
-      {!immersive && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
     </article>
   );
 }
