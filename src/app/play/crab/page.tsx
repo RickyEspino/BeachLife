@@ -12,7 +12,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 type BattleState = "READY" | "BATTLE" | "RESULT";
 
 const BATTLE_DURATION_MS = 30_000; // 30s
-const STARTING_HP = 180; // avg ~6 taps/sec to win
+const STARTING_HP = 100; // avg ~6 taps/sec to win
 const TAP_DAMAGE = 1;
 const CRIT_DAMAGE = 3;
 const CRIT_CHANCE = 0.05; // 5%
