@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, { Marker, Popup, ViewState, MapRef } from 'react-map-gl/mapbox';
@@ -224,12 +224,17 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
     }
   }, [focusId, merchants]);
 
+  // Visible merchants (respect 2× filter if active)
+  const visibleMerchants = useMemo(() => (
+    showDoubleOnly ? merchants.filter(m => doubleIds.includes(m.id)) : merchants
+  ), [showDoubleOnly, merchants, doubleIds]);
+
   // Combine merchants + shared users for clustering
   const unifiedPoints: UnifiedPoint[] = useMemo(() => {
-    const ms: UnifiedPoint[] = merchants.map(m => ({ id: m.id, type: 'merchant', name: m.name, latitude: m.latitude, longitude: m.longitude, category: m.category }));
+    const ms: UnifiedPoint[] = visibleMerchants.map(m => ({ id: m.id, type: 'merchant', name: m.name, latitude: m.latitude, longitude: m.longitude, category: m.category }));
     const us: UnifiedPoint[] = sharedUsers.map(u => ({ id: `u-${u.id}`, type: 'user', name: u.username, latitude: u.latitude, longitude: u.longitude, avatarUrl: u.avatarUrl, username: u.username }));
     return [...ms, ...us];
-  }, [merchants, sharedUsers]);
+  }, [visibleMerchants, sharedUsers]);
 
   const zoom = (viewState.zoom as number) || 0;
 
@@ -311,9 +316,22 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
     mapRef?.flyTo({ center: [c.longitude, c.latitude], zoom: targetZoom, duration: 650, essential: true });
   };
 
+  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  // Central timestamp for promo urgency this render
+  const renderNow = Date.now();
+  const promoState = useCallback((id: string) => {
+    if (!doubleIds.includes(id)) return { is2x: false, urgent: false, fading: false };
+    const expiresAt = doubleMeta[id] || 0;
+    if (!expiresAt) return { is2x: true, urgent: false, fading: false };
+    const msLeft = expiresAt - renderNow;
+    const urgent = msLeft > 0 && msLeft < 30 * 60 * 1000;
+    const fading = !urgent && msLeft > 0 && msLeft < 60 * 60 * 1000;
+    return { is2x: true, urgent, fading };
+  }, [doubleIds, doubleMeta, renderNow]);
+
   return (
     <div className="fixed inset-0" role="region" aria-label="Interactive map of merchants and beaches">
-      {!process.env.NEXT_PUBLIC_MAPBOX_TOKEN && (
+      {!token && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-900 dark:to-gray-800">
           <div className="text-lg font-semibold">Map disabled</div>
           <p className="text-sm max-w-sm text-gray-600 dark:text-gray-300">No Mapbox token configured. Set <code className="px-1 py-0.5 rounded bg-gray-800 text-white text-[11px]">NEXT_PUBLIC_MAPBOX_TOKEN</code> in your env to enable interactive maps.</p>
@@ -325,35 +343,21 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
           </div>
         </div>
       )}
+      {token && (
       <Map
   {...viewState}
         onMove={(evt) => setViewState(evt.viewState)}
   ref={(ref) => { if (ref) setMapRef(ref); }}
-        mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? ''}
+        mapboxAccessToken={token}
         style={{ width: '100%', height: '100%' }}
         mapStyle="mapbox://styles/mapbox/streets-v11"
       >
-        {!process.env.NEXT_PUBLIC_MAPBOX_TOKEN && (
-          <div className="absolute left-2 top-2 z-10 rounded bg-red-600/90 px-3 py-1 text-[10px] font-medium text-white">
-            Missing Mapbox token
-          </div>
-        )}
         {/* Clustered points (merchants + shared users) */}
         {clusters.map(c => {
-          const renderNow = Date.now();
-          const promoState = (id: string) => {
-            if (!doubleIds.includes(id)) return { is2x: false, urgent: false, fading: false, expiresAt: 0, msLeft: 0 };
-            const expiresAt = doubleMeta[id] || 0;
-            if (!expiresAt) return { is2x: true, urgent: false, fading: false, expiresAt: 0, msLeft: 0 };
-            const msLeft = expiresAt - renderNow;
-            const urgent = msLeft > 0 && msLeft < 30 * 60 * 1000;
-            const fading = !urgent && msLeft > 0 && msLeft < 60 * 60 * 1000;
-            return { is2x: true, urgent, fading, expiresAt, msLeft };
-          };
           if (c.count === 1) {
             const p = c.points[0];
             if (p.type === 'merchant') {
-              const { is2x, urgent, fading, msLeft } = promoState(p.id);
+              const { is2x, urgent, fading } = promoState(p.id);
               if (showDoubleOnly && !is2x) return null;
               return (
                 <Marker key={p.id} longitude={p.longitude} latitude={p.latitude} anchor="bottom">
@@ -411,6 +415,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
               if (st.urgent) hasUrgent = true; else if (st.fading) hasFading = true;
             }
           }
+          if (showDoubleOnly && !has2x) return null; // hide clusters without any 2× when filter active
           return (
             <Marker key={`cluster-${c.id}-${c.count}`} longitude={c.longitude} latitude={c.latitude} anchor="center">
               <button
@@ -565,6 +570,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
         )}
 
       </Map>
+      )}
     </div>
   );
 }

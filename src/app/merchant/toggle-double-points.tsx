@@ -53,13 +53,13 @@ const DURATIONS: { label: string; ms: number }[] = [
 
 export default function DoublePointsToggle({ merchantId }: { merchantId: string }) {
   const [enabled, setEnabled] = useState(false);
-  const [promosState, setPromosState] = useState<Promo[]>([]); // internal tracking (not directly used in render)
+  const [_promosState, setPromosState] = useState<Promo[]>([]); // underscore to silence unused var lint
   const [durationMs, setDurationMs] = useState<number>(DURATIONS[1].ms); // default 1h
   const [remaining, setRemaining] = useState<number>(0);
 
   useEffect(() => {
   const ps = readPromos();
-  setPromosState(ps);
+    setPromosState(ps); // Update to use _promosState
     const found = ps.find(p => p.id === merchantId);
     setEnabled(!!found);
     if (found) setRemaining(found.expiresAt - Date.now());
