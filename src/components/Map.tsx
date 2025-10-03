@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, { Marker, Popup, ViewState, GeolocateControl } from 'react-map-gl/mapbox';
 // removed avatar Image for user marker; using GeolocateControl's built-in indicator
@@ -169,11 +170,14 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
         {showUserLocation && userPos && userAvatarUrl && (
           <Marker longitude={userPos.longitude} latitude={userPos.latitude} anchor="center">
             <div className="relative -translate-y-1 -translate-x-1">
-              <img
+              <Image
                 src={userAvatarUrl}
                 alt="Your avatar location"
+                width={40}
+                height={40}
                 className="h-10 w-10 rounded-full ring-2 ring-white shadow object-cover"
                 draggable={false}
+                priority
               />
               <span className="absolute inset-0 rounded-full ring ring-blue-500/40 animate-pulse pointer-events-none" aria-hidden="true" />
             </div>
