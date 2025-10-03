@@ -86,6 +86,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
   const [crabCountdown, setCrabCountdown] = useState<number>(0);
   // Double points merchant IDs (client-only)
   const [doubleIds, setDoubleIds] = useState<string[]>([]);
+  const [doubleMeta, setDoubleMeta] = useState<Record<string, number>>({}); // id -> expiresAt (0 if legacy/no expiry)
   const [showDoubleOnly, setShowDoubleOnly] = useState(false);
 
   useEffect(() => {
@@ -98,9 +99,15 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
         const parsed = JSON.parse(raw);
         const now = Date.now();
         if (Array.isArray(parsed) && parsed.every(x => x && typeof x.id === 'string' && typeof x.expiresAt === 'number')) {
-          return parsed.filter(p => p.expiresAt > now).map(p => p.id);
+          const active = parsed.filter(p => p.expiresAt > now);
+          const meta: Record<string, number> = {};
+            for (const p of active) meta[p.id] = p.expiresAt;
+          setDoubleMeta(meta);
+          return active.map(p => p.id);
         }
         if (Array.isArray(parsed) && parsed.every(x => typeof x === 'string')) {
+          // legacy list—no expiries
+          setDoubleMeta(parsed.reduce((acc: Record<string, number>, id: string) => { acc[id] = 0; return acc; }, {}));
           return parsed as string[]; // legacy, no expiry
         }
       } catch {}
@@ -109,7 +116,12 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
     setDoubleIds(read());
     const onStorage = (e: StorageEvent) => { if (e.key === KEY) setDoubleIds(read()); };
     const onCustom = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { merchantIds?: string[] } | undefined;
+      const detail = (e as CustomEvent).detail as { merchantIds?: string[]; promos?: { id: string; expiresAt: number }[] } | undefined;
+      if (detail?.promos) {
+        const now = Date.now();
+        const active = detail.promos.filter(p => p.expiresAt > now);
+        setDoubleMeta(active.reduce((acc: Record<string, number>, p) => { acc[p.id] = p.expiresAt; return acc; }, {}));
+      }
       if (detail?.merchantIds) setDoubleIds(detail.merchantIds);
     };
     window.addEventListener('storage', onStorage);
@@ -302,6 +314,10 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
             if (p.type === 'merchant') {
               if (showDoubleOnly && !doubleIds.includes(p.id)) return null;
               const is2x = doubleIds.includes(p.id);
+              const expiresAt = doubleMeta[p.id] || 0;
+              const now = Date.now();
+              const msLeft = expiresAt ? expiresAt - now : 0;
+              const fading = is2x && expiresAt !== 0 && msLeft < 60 * 60 * 1000; // last hour
               return (
                 <Marker key={p.id} longitude={p.longitude} latitude={p.latitude} anchor="bottom">
                   <div className="relative">
@@ -313,7 +329,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
                       🏪
                     </button>
                     {is2x && (
-                      <span className="absolute -top-3 -right-3 rounded-full bg-amber-500 text-[10px] font-bold text-white px-1.5 py-0.5 shadow ring-1 ring-black/10 select-none animate-pulse" title="2× Points Active">2×</span>
+                      <span className={`absolute -top-3 -right-3 rounded-full text-[10px] font-bold px-1.5 py-0.5 shadow ring-1 ring-black/10 select-none ${fading ? 'bg-gradient-to-br from-amber-500/30 to-amber-400/20 text-amber-600 animate-pulse' : 'bg-amber-500 text-white animate-pulse'}`} title={`2× Points Active${fading ? ' (ending soon)' : ''}`}>2×</span>
                     )}
                   </div>
                 </Marker>
@@ -344,20 +360,27 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
             }
           }
           // cluster marker
+          // Determine if any merchant in cluster has 2x active
+          const has2x = c.points.some(p => p.type === 'merchant' && doubleIds.includes(p.id));
           return (
             <Marker key={`cluster-${c.id}-${c.count}`} longitude={c.longitude} latitude={c.latitude} anchor="center">
               <button
                 type="button"
                 onClick={(e) => { e.preventDefault(); handleClusterClick(c); }}
-                aria-label={`Cluster with ${c.count} points`}
+                aria-label={`Cluster with ${c.count} points${has2x ? ' including 2× promos' : ''}`}
                 className="relative h-12 w-12 rounded-full bg-emerald-600/80 backdrop-blur text-white font-semibold text-sm flex items-center justify-center shadow-lg ring-2 ring-white hover:scale-105 active:scale-95 transition"
               >
                 {c.count}
                 <span className="absolute -inset-1 rounded-full animate-ping bg-emerald-400/30" aria-hidden="true" />
+                {has2x && (
+                  <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-amber-500 text-[10px] font-bold flex items-center justify-center shadow ring-1 ring-black/10">2×</span>
+                )}
               </button>
             </Marker>
           );
         })}
+  {/* Periodic re-render each minute for fading state (simple interval) */}
+  <Ticker minute />
 
         {/* Fallback beach pins (could later be hidden or toggled) */}
         {merchants.length === 0 && beaches.map((b) => (
@@ -503,3 +526,14 @@ function isMerchantPin(p: BasePin | MerchantPin): p is MerchantPin {
 // Approximate meters to pixels at current latitude & zoom.
 // Formula: metersPerPixel = 156543.03392 * cos(lat * PI/180) / 2^zoom
 // removed custom accuracyToPixels as we rely on GeolocateControl's accuracy circle
+
+// Lightweight ticker component to force a re-render every minute (or custom interval)
+function Ticker({ minute = false, intervalMs }: { minute?: boolean; intervalMs?: number }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const ms = intervalMs ?? (minute ? 60_000 : 1_000);
+    const id = setInterval(() => setTick(t => (t + 1) % 1_000_000), ms);
+    return () => clearInterval(id);
+  }, [minute, intervalMs]);
+  return null;
+}
