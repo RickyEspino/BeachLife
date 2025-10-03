@@ -118,46 +118,58 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
 
   const zoom = (viewState.zoom as number) || 0;
 
-  // Simple distance threshold in degrees (approx) based on zoom
-  const clusterThreshold = useMemo(() => {
-    if (zoom < 5) return 1.5; // very coarse
-    if (zoom < 6) return 0.9;
-    if (zoom < 7) return 0.5;
-    if (zoom < 8) return 0.25;
-    if (zoom < 9) return 0.12;
-    if (zoom < 10) return 0.07;
-    if (zoom < 11) return 0.04;
-    if (zoom < 12) return 0.02;
-    if (zoom < 13) return 0.01;
-    if (zoom < 14) return 0.006;
-    if (zoom < 15) return 0.004;
-    return 0.002; // high zoom small cluster radius
+  // Zoom-scaled clustering radius (in meters). Smaller at higher zoom so points "break apart".
+  const clusterRadiusMeters = useMemo(() => {
+    if (zoom < 5) return 120_000; // 120 km
+    if (zoom < 6) return 60_000;
+    if (zoom < 7) return 30_000;
+    if (zoom < 8) return 15_000;
+    if (zoom < 9) return 8_000;
+    if (zoom < 10) return 4_000;
+    if (zoom < 11) return 2_000;
+    if (zoom < 12) return 1_000;
+    if (zoom < 13) return 600;
+    if (zoom < 14) return 300;
+    if (zoom < 15) return 150;
+    if (zoom < 16) return 70;
+    return 30; // very fine at deep zoom
   }, [zoom]);
+
+  // Haversine distance in meters
+  function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number) {
+    const R = 6371000; // Earth radius meters
+    const toRad = (d: number) => d * Math.PI / 180;
+    const dLat = toRad(bLat - aLat);
+    const dLng = toRad(bLng - aLng);
+    const lat1 = toRad(aLat);
+    const lat2 = toRad(bLat);
+    const sinDLat = Math.sin(dLat / 2);
+    const sinDLng = Math.sin(dLng / 2);
+    const a = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
 
   const clusters: Cluster[] = useMemo(() => {
     const list: Cluster[] = [];
     for (const p of unifiedPoints) {
       let target: Cluster | undefined;
       for (const c of list) {
-        const dLat = Math.abs(c.latitude - p.latitude);
-        const dLng = Math.abs(c.longitude - p.longitude);
-        if (dLat <= clusterThreshold && dLng <= clusterThreshold) {
-          target = c; break;
-        }
+        const dist = distanceMeters(c.latitude, c.longitude, p.latitude, p.longitude);
+        if (dist <= clusterRadiusMeters) { target = c; break; }
       }
       if (target) {
         target.points.push(p);
-        // incremental average to keep center stable
         const n = target.points.length;
         target.latitude = target.latitude + (p.latitude - target.latitude) / n;
         target.longitude = target.longitude + (p.longitude - target.longitude) / n;
-        target.count = target.points.length;
+        target.count = n;
       } else {
         list.push({ id: p.id, latitude: p.latitude, longitude: p.longitude, count: 1, points: [p] });
       }
     }
     return list;
-  }, [unifiedPoints, clusterThreshold]);
+  }, [unifiedPoints, clusterRadiusMeters]);
 
   const handleClusterClick = (c: Cluster) => {
     // Zoom in towards cluster center to expand
