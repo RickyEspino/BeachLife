@@ -1,1 +1,16 @@
-<svg xmlns='http://www.w3.org/2000/svg' width='42' height='42'><circle cx='21' cy='21' r='20' fill='#dc2626'/><path d='M21 13v16M15 17h12M15 23h12M17 15l8 12M25 15l-8 12' stroke='white' stroke-width='2' stroke-linecap='round'/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" aria-hidden="true" role="img">
+  <defs>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.8" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <!-- Pin base -->
+  <g filter="url(#shadow)">
+    <path d="M32 4c-11.046 0-20 8.954-20 20 0 14 18 32 20 36 2-4 20-22 20-36 0-11.046-8.954-20-20-20z" fill="#FF5FA2" stroke="white" stroke-width="2"/>
+  </g>
+  <!-- Glyph circle backdrop -->
+  <circle cx="32" cy="24" r="12" fill="white" opacity="0.18"/>
+  <!-- fireworks/starburst -->
+  <path d="M32 24v-6M32 24v6M32 24h-6M32 24h6M32 24l-5-5M32 24l5 5M32 24l-5 5M32 24l5-5" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <circle cx="32" cy="24" r="1.5" fill="#ffffff"/>
+</svg>

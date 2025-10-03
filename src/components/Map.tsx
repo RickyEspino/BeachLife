@@ -326,7 +326,7 @@ export default function MapComponent({ merchants = [], loadError, initialView, f
                   <div className="relative">
                     <button
                       aria-label={`Merchant: ${p.name}${is2x ? ' (2x Points active)' : ''}`}
-                      className="group relative focus:outline-none"
+                      className="group relative focus:outline-none appearance-none bg-transparent p-0 border-0"
                       onClick={e => { e.preventDefault(); setSelected({ id: p.id, name: p.name, latitude: p.latitude, longitude: p.longitude, category: p.category }); }}
                     >
                       <MerchantPinIcon category={p.category} />

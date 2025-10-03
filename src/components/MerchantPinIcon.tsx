@@ -1,10 +1,10 @@
 import NextImage from 'next/image';
 import { resolveMerchantCategoryIcon } from '@/lib/merchantCategoryIcons';
 
-export function MerchantPinIcon({ category }: { category?: string | null }) {
+export function MerchantPinIcon({ category, debug = false }: { category?: string | null; debug?: boolean }) {
   const file = resolveMerchantCategoryIcon(category);
   return (
-    <span className="block h-12 w-12 -translate-y-2">
+  <span className={`block h-12 w-12 -translate-y-2 ${debug ? 'outline-1 outline-pink-500/70' : ''}`}>
       <NextImage
         src={`/img/map-pins/${file}`}
         alt={category ? `${category} merchant` : 'Merchant'}

@@ -1,1 +1,17 @@
-<svg xmlns='http://www.w3.org/2000/svg' width='42' height='42'><circle cx='21' cy='21' r='20' fill='#10b981'/><path d='M21 12v18M12 21h18M15 15l12 12M27 15l-12 12' stroke='white' stroke-width='2' stroke-linecap='round'/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" aria-hidden="true" role="img">
+  <defs>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.8" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <!-- Pin base -->
+  <g filter="url(#shadow)">
+    <path d="M32 4c-11.046 0-20 8.954-20 20 0 14 18 32 20 36 2-4 20-22 20-36 0-11.046-8.954-20-20-20z" fill="#2EC5FF" stroke="white" stroke-width="2"/>
+  </g>
+  <!-- Glyph circle backdrop -->
+  <circle cx="32" cy="24" r="12" fill="white" opacity="0.18"/>
+  <!-- ferris wheel -->
+  <circle cx="32" cy="24" r="8" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <path d="M32 16v-2M32 34v-2M24 24h-2M42 24h-2M27 19l-1-1M37 29l1 1M37 19l1-1M27 29l-1 1" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <path d="M28 34l-2 4M36 34l2 4M26 38h12" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+</svg>
