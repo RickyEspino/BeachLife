@@ -2,6 +2,7 @@
 import { useRef, useState } from 'react';
 import Image from 'next/image';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browserClient';
+import { resizeImage } from '@/lib/images/resize';
 
 interface AvatarUploaderProps {
   initialUrl?: string;
@@ -21,20 +22,22 @@ export default function AvatarUploader({ initialUrl, onUploaded, className = '' 
     setError(null);
     setInfo(null);
     if (!file.type.startsWith('image/')) { setError('Please choose an image.'); return; }
-    if (file.size > 5 * 1024 * 1024) { setError('File too large (max 5MB).'); return; }
+    if (file.size > 8 * 1024 * 1024) { setError('File too large (max 8MB).'); return; }
 
     setUploading(true);
     try {
       const { data: { user }, error: authErr } = await supabase.auth.getUser();
       if (authErr || !user) { setError('Not authenticated'); return; }
 
-      // Overwrite a stable path to avoid orphan files; cache bust via query param
-      const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const path = `${user.id}/avatar.${ext || 'png'}`;
+      // Resize & compress to constrain bandwidth and strip EXIF
+      const processed = await resizeImage(file, { maxDimension: 512, mimeType: 'image/webp', quality: 0.85 });
+
+      const ext = 'webp';
+      const path = `${user.id}/avatar.${ext}`; // stable path; webp output
 
       const { error: upErr } = await supabase.storage
         .from('avatars')
-        .upload(path, file, { upsert: true, contentType: file.type || 'image/png' });
+        .upload(path, processed, { upsert: true, contentType: 'image/webp' });
 
       if (upErr) { setError(`Upload failed: ${upErr.message}`); return; }
 

@@ -55,5 +55,63 @@ Key application routes (non-exhaustive):
 	- `/merchants/[id]` – Public merchant detail page
 		- Shows basic info and last 5 reward issuances (masked codes, points, status) plus a View on Map CTA when coordinates exist.
 
+## Avatar Storage & Upload
+
+The avatar system uses Supabase Storage bucket `avatars` with per-user folders/paths:
+
+- Object key pattern: `<user_id>/avatar.webp` (stable overwrite)  
+- Public read policy (or switch to signed URLs if privacy needed)  
+- RLS policies restrict INSERT/UPDATE/DELETE to `split_part(object_name,'/',1) = auth.uid()`
+
+### Policies (reference)
+```sql
+create policy "avatars_insert_own" on storage.objects
+for insert to authenticated
+with check (
+  bucket_id = 'avatars'
+  and split_part(object_name,'/',1) = auth.uid()::text
+);
+
+create policy "avatars_update_own" on storage.objects
+for update to authenticated
+using (
+  bucket_id = 'avatars'
+  and split_part(object_name,'/',1) = auth.uid()::text
+)
+with check (
+  bucket_id = 'avatars'
+  and split_part(object_name,'/',1) = auth.uid()::text
+);
+
+create policy "avatars_delete_own" on storage.objects
+for delete to authenticated
+using (
+  bucket_id = 'avatars'
+  and split_part(object_name,'/',1) = auth.uid()::text
+);
+
+create policy "avatars_read_public" on storage.objects
+for select using ( bucket_id = 'avatars' );
+```
+
+### Client Flow
+1. User selects an image file (max 8MB).  
+2. Image resized client-side to max 512px (WebP, quality 0.85) stripping EXIF.  
+3. Upload with `upsert: true` to stable path.  
+4. Public URL retrieved and cache-busted with `?v=timestamp`.  
+5. `profiles.avatar_url` updated (no insert; profile presumed to exist).  
+
+### Why Stable Path
+- Avoid storage clutter (only latest avatar kept)  
+- Simplifies CDN caching (single object URL + cache-bust param)  
+
+### Switching to Private Avatars
+- Remove public select policy; generate signed URLs via `createSignedUrl(path, ttlSeconds)` on render.  
+- Optionally store just relative path in `profiles` (e.g. `avatar.webp`) and build signed URL server-side.  
+
+### Offline / Edge Cases
+- If profile row might not exist, add an upsert before the update:  
+  `supabase.from('profiles').upsert({ id: user.id }, { onConflict: 'id', ignoreDuplicates: true })`  
+
 ---
 # BeachLife
