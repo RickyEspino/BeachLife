@@ -11,13 +11,24 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 type BattleState = "READY" | "BATTLE" | "RESULT";
 
-const BATTLE_DURATION_MS = 30_000; // 30s
-const STARTING_HP = 100; // ~6 taps/sec to win
+const BATTLE_DURATION_MS = 30_000; // legacy reference (used for drain calibration)
+const STARTING_HP = 100; // crab HP
+const PLAYER_STARTING_HP = 100; // player HP
+const PLAYER_DRAIN_PER_SEC = PLAYER_STARTING_HP / 30; // drains fully in ~30s if no win
 const TAP_DAMAGE = 1;
 const CRIT_DAMAGE = 5;
 const CRIT_CHANCE = 0.10; // 10%
 const MAX_TAPS_PER_100MS_BUCKET = 12; // anti-macro burst
 const MAX_TAPS_PER_SECOND = 20; // soft cap
+
+// Power Ups
+type PowerUpKey = 'slow' | 'double' | 'shield';
+interface ActivePowerUp { key: PowerUpKey; expiresAt: number; }
+const POWER_UP_DURATIONS: Record<PowerUpKey, number> = {
+  slow: 6000,      // 6s slower drain
+  double: 6000,    // 6s double taps score weighting (here: extra damage tick on crit)
+  shield: 1        // shield is single-use flag (expiresAt ignored after consumption)
+};
 
 // Power-up & FX groundwork (extensible)
 // (Future power-ups will hook into these structures.)
@@ -35,13 +46,41 @@ type Particle = {
 
 export default function Page() {
   const [state, setState] = useState<BattleState>("READY");
-  const [hp, setHp] = useState<number>(STARTING_HP);
-  const [timeLeft, setTimeLeft] = useState<number>(BATTLE_DURATION_MS);
+  const [hp, setHp] = useState<number>(STARTING_HP); // crab HP
+  const [playerHp, setPlayerHp] = useState<number>(PLAYER_STARTING_HP); // player HP (drains over time)
   const [taps, setTaps] = useState<number>(0);
   const [crits, setCrits] = useState<number>(0);
   const [reducedMotion, setReducedMotion] = useState<boolean>(false);
   const [soundOn, setSoundOn] = useState<boolean>(true);
   const [win, setWin] = useState<boolean | null>(null);
+  // Power-up state
+  const [powerUps, setPowerUps] = useState<ActivePowerUp[]>([]);
+  const hasPowerUp = useCallback((k: PowerUpKey) => powerUps.some(p => p.key === k && (p.key === 'shield' ? true : p.expiresAt > performance.now())), [powerUps]);
+  const addPowerUp = useCallback((k: PowerUpKey) => {
+    setPowerUps(prev => {
+      const now = performance.now();
+      if (k === 'shield') {
+        // single shield active at a time
+        if (prev.some(p => p.key === 'shield')) return prev;
+        return [...prev, { key: 'shield', expiresAt: now + 60_000 }]; // long expiry (functionally until used)
+      }
+      const expiresAt = now + POWER_UP_DURATIONS[k];
+      // refresh if already present
+      return [...prev.filter(p => p.key !== k), { key: k, expiresAt }];
+    });
+  }, []);
+  const consumeShield = useCallback(() => {
+    setPowerUps(prev => prev.filter(p => p.key !== 'shield'));
+  }, []);
+  // Periodic cleanup of expired (non-shield) powerups
+  useEffect(() => {
+    if (!powerUps.length) return;
+    const id = setInterval(() => {
+      const now = performance.now();
+      setPowerUps(prev => prev.filter(p => p.key === 'shield' || p.expiresAt > now));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [powerUps.length]);
 
   // Anti-cheat buckets
   const bucket100Ref = useRef<{ key: number; count: number }>({ key: 0, count: 0 });
@@ -146,10 +185,7 @@ export default function Page() {
 
   // Web Audio
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const lastSecondRef = useRef<number>(Math.ceil(BATTLE_DURATION_MS / 1000));
-
-  // Progress for timer ring
-  const progress = useMemo(() => Math.max(0, Math.min(1, 1 - timeLeft / BATTLE_DURATION_MS)), [timeLeft]);
+  // (Removed timer ring progress; using HP bars now)
 
   // Reduced motion preference
   useEffect(() => {
@@ -244,49 +280,40 @@ export default function Page() {
     }
   }, []);
 
-  // Timer loop
+  // Player HP drain loop
   useEffect(() => {
     if (state !== "BATTLE") return;
-    lastSecondRef.current = Math.ceil(timeLeft / 1000);
-    const startedAt = performance.now();
-    const base = timeLeft; // resume support
-
     let raf = 0;
-    const tick = () => {
-      const elapsed = performance.now() - startedAt;
-      const remaining = Math.max(0, base - elapsed);
-      setTimeLeft(remaining);
+    let prev = performance.now();
+    const loop = () => {
+      const now = performance.now();
+      const dt = (now - prev) / 1000; // seconds
+      prev = now;
 
-      // second ticks (subtle)
-      const sec = Math.ceil(remaining / 1000);
-      if (sec !== lastSecondRef.current) {
-        lastSecondRef.current = sec;
-        if (sec <= 30 && sec > 0) {
-          sfx("tick");
+      setPlayerHp((prevHp) => {
+        if (prevHp <= 0 || hp <= 0) return prevHp;
+        const slowFactor = hasPowerUp('slow') ? 0.4 : 1; // slower drain
+        const next = Math.max(0, prevHp - PLAYER_DRAIN_PER_SEC * dt * slowFactor);
+        if (next === 0 && hp > 0) {
+          if (hasPowerUp('shield')) {
+            consumeShield();
+            return Math.max(prevHp, PLAYER_STARTING_HP * 0.25); // restore some HP instead of losing
+          } else {
+            setState("RESULT");
+            setWin(false);
+            vibrate(20);
+            sfx("lose");
+          }
         }
+        return next;
+      });
+      if (hp > 0 && state === "BATTLE") {
+        raf = requestAnimationFrame(loop);
       }
-
-      if (remaining <= 0) {
-        setState("RESULT");
-        const didWin = hp <= 0;
-        setWin(didWin);
-        if (didWin) {
-          vibrate([40, 60, 40]);
-          sfx("win");
-          setCelebrate(true);
-          setTimeout(() => setCelebrate(false), 900);
-        } else {
-          vibrate(20);
-          sfx("lose");
-        }
-        return;
-      }
-      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+    raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+  }, [state, hp, vibrate, sfx, hasPowerUp, consumeShield]);
 
   // Shake animation loop (separate so it persists across state small changes)
   const shakeAnimRef = useRef<number>(0);
@@ -315,8 +342,8 @@ export default function Page() {
   }, [hp, state]);
 
   const reset = useCallback(() => {
-    setHp(STARTING_HP);
-    setTimeLeft(BATTLE_DURATION_MS);
+  setHp(STARTING_HP);
+  setPlayerHp(PLAYER_STARTING_HP);
     setTaps(0);
     setCrits(0);
     setWin(null);
@@ -326,8 +353,13 @@ export default function Page() {
 
   const start = useCallback(async () => {
     await ensureAudio(); // prime/resume audio on user action
-    setHp(STARTING_HP);
-    setTimeLeft(BATTLE_DURATION_MS);
+    // Try fullscreen (graceful fail) for immersion
+    const el = document.documentElement;
+    if (el && (el as any).requestFullscreen) {
+      try { await (el as any).requestFullscreen(); } catch { /* ignore */ }
+    }
+  setHp(STARTING_HP);
+  setPlayerHp(PLAYER_STARTING_HP);
     setTaps(0);
     setCrits(0);
     setWin(null);
@@ -359,10 +391,13 @@ export default function Page() {
     if (perSecRef.current.count > MAX_TAPS_PER_SECOND) return;
 
     // Ignore if already done
-    if (hp <= 0 || timeLeft <= 0) return;
+  if (hp <= 0 || playerHp <= 0) return;
 
     const isCrit = Math.random() < CRIT_CHANCE;
-    const dmg = isCrit ? CRIT_DAMAGE : TAP_DAMAGE;
+    let dmg = isCrit ? CRIT_DAMAGE : TAP_DAMAGE;
+    if (hasPowerUp('double')) {
+      dmg *= isCrit ? 1.8 : 1.4; // scale damage modestly
+    }
 
     setTaps((t) => t + 1);
     if (isCrit) setCrits((c) => c + 1);
@@ -410,15 +445,13 @@ export default function Page() {
       const ny = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
       spawnParticles(nx, ny, isCrit);
     }
-  }, [state, hp, timeLeft, reducedMotion, vibrate, ensureAudio, sfx, spawnParticles, triggerShake]);
-
-  // SVG ring math
-  const circumference = 2 * Math.PI * 140; // r = 140 (bigger ring)
-  const dash = useMemo(() => `${circumference * progress} ${circumference}`, [circumference, progress]);
+  }, [state, hp, playerHp, reducedMotion, vibrate, ensureAudio, sfx, spawnParticles, triggerShake, hasPowerUp]);
 
   const lowHp = hp > 0 && hp <= STARTING_HP * 0.25;
   const percent = (STARTING_HP - hp) / STARTING_HP;
   const grade = hp <= 0 ? "S" : percent >= 0.75 ? "A" : percent >= 0.5 ? "B" : "C";
+  const crabHpPct = hp / STARTING_HP;
+  const playerHpPct = playerHp / PLAYER_STARTING_HP;
 
   return (
     <main className="min-h-dvh w-full relative overflow-hidden bg-[radial-gradient(1200px_600px_at_70%_-10%,rgba(255,200,150,0.35),transparent),radial-gradient(800px_400px_at_10%_90%,rgba(56,189,248,0.25),transparent)] dark:bg-[radial-gradient(1200px_600px_at_70%_-10%,rgba(251,146,60,0.25),transparent),radial-gradient(800px_400px_at_10%_90%,rgba(59,130,246,0.2),transparent)]">
@@ -446,47 +479,50 @@ export default function Page() {
       {/* Content container */}
       <div className="relative z-10 flex min-h-dvh items-center justify-center p-4 sm:p-6">
         <div className="w-full max-w-2xl">
-          {/* Header + Controls */}
-          <div className="mb-4 flex items-center justify-between">
-            <div className="text-center flex-1">
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight drop-shadow-sm">
-                King Crab <span className="text-amber-500">Quick Battle</span>
-              </h1>
-              <p className="mt-1 text-xs sm:text-sm text-gray-700 dark:text-gray-300">
-                Tap to defeat in <strong>30s</strong>. Crits deal extra damage. Good rhythm wins. 🦀
-              </p>
+          {/* Header + Controls (hidden during battle for immersion) */}
+          {state !== "BATTLE" && (
+            <div className="mb-4 flex items-center justify-between">
+              <div className="text-center flex-1">
+                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight drop-shadow-sm">
+                  King Crab <span className="text-amber-500">Quick Battle</span>
+                </h1>
+                <p className="mt-1 text-xs sm:text-sm text-gray-700 dark:text-gray-300">
+                  Tap to defeat in <strong>30s</strong>. Crits deal extra damage. Good rhythm wins. 🦀
+                </p>
+              </div>
+              <button
+                aria-label={soundOn ? "Sound on" : "Sound off"}
+                onClick={async () => {
+                  if (!soundOn) {
+                    setSoundOn(true);
+                    await ensureAudio();
+                  } else {
+                    setSoundOn(false);
+                  }
+                }}
+                className={`ml-3 rounded-full p-2 ring-1 ring-black/5 dark:ring-white/10 shadow-sm 
+                ${soundOn ? "bg-emerald-500 text-white" : "bg-white/70 dark:bg-white/10 text-gray-700 dark:text-gray-200"}`}
+                title={soundOn ? "Sound on" : "Sound off"}
+              >
+                {soundOn ? "🔊" : "🔇"}
+              </button>
             </div>
+          )}
 
-            {/* Sound toggle */}
-            <button
-              aria-label={soundOn ? "Sound on" : "Sound off"}
-              onClick={async () => {
-                if (!soundOn) {
-                  setSoundOn(true);
-                  await ensureAudio();
-                } else {
-                  setSoundOn(false);
-                }
-              }}
-              className={`ml-3 rounded-full p-2 ring-1 ring-black/5 dark:ring-white/10 shadow-sm 
-              ${soundOn ? "bg-emerald-500 text-white" : "bg-white/70 dark:bg-white/10 text-gray-700 dark:text-gray-200"}`}
-              title={soundOn ? "Sound on" : "Sound off"}
-            >
-              {soundOn ? "🔊" : "🔇"}
-            </button>
-          </div>
-
-          {/* Status bar */}
-          <div className="mb-4 grid grid-cols-3 gap-3">
-            <InfoPill label="HP" value={hp.toString()} emphasize={lowHp} />
-            <InfoPill label="Time" value={`${Math.ceil(timeLeft / 1000)}s`} />
-            <InfoPill label="Grade" value={grade} />
-          </div>
+          {/* Status (hidden during battle; BATTLE shows inline bars instead) */}
+          {state !== 'BATTLE' && (
+            <div className="mb-4 grid grid-cols-3 gap-3">
+              <InfoPill label="Crab HP" value={hp.toString()} emphasize={lowHp} />
+              <InfoPill label="Player HP" value={Math.ceil(playerHp).toString()} />
+              <InfoPill label="Grade" value={grade} />
+            </div>
+          )}
 
           {/* Arena */}
           <div
-            className={`relative rounded-[28px] p-4 sm:p-6 shadow-2xl ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-md 
-            bg-white/70 dark:bg-white/5 ${flash ? "animate-[pulse_0.14s_ease]" : ""}`}
+            className={`relative rounded-[28px] p-2 sm:p-4 shadow-2xl ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-md 
+            bg-white/70 dark:bg-white/5 ${flash ? "animate-[pulse_0.14s_ease]" : ""} 
+            ${state === 'BATTLE' ? 'fixed inset-0 m-0 rounded-none z-20 flex items-center justify-center p-0 sm:p-0' : ''}`}
             style={shakeMag ? { transform: `translate(${(Math.random()*2-1)*shakeMag}px, ${(Math.random()*2-1)*shakeMag}px)` } : undefined}
           >
             {/* Glow border */}
@@ -494,28 +530,28 @@ export default function Page() {
               <div className="absolute inset-0 rounded-[28px] blur-xl opacity-60 bg-gradient-to-r from-amber-400/40 via-pink-400/30 to-sky-400/40" />
             </div>
 
-            <div className="relative mx-auto aspect-square max-w-[520px]">
-              {/* Timer ring */}
-              <svg viewBox="0 0 340 340" className="absolute inset-0 w-full h-full">
-                <defs>
-                  <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#f59e0b" />
-                    <stop offset="100%" stopColor="#22c55e" />
-                  </linearGradient>
-                </defs>
-                <circle cx="170" cy="170" r="140" className="fill-none stroke-black/10 dark:stroke-white/10" strokeWidth="16" />
-                <circle
-                  cx="170"
-                  cy="170"
-                  r="140"
-                  className="fill-none"
-                  stroke="url(#ring)"
-                  strokeWidth="12"
-                  strokeDasharray={dash}
-                  strokeLinecap="round"
-                  transform="rotate(-90 170 170)"
-                />
-              </svg>
+            <div className={`relative mx-auto aspect-square ${state === 'BATTLE' ? 'w-[min(100vh,100vw)] max-w-none' : 'max-w-[520px]'}`}>
+              {/* HUD Bars during battle */}
+              {state === 'BATTLE' && (
+                <div className="absolute top-4 left-4 right-4 space-y-3 select-none pointer-events-none">
+                  <HpBar label="CRAB" pct={crabHpPct} colorFrom="#f97316" colorTo="#f59e0b" danger={lowHp} />
+                  <HpBar label="YOU" pct={playerHpPct} colorFrom="#0ea5e9" colorTo="#10b981" danger={playerHpPct <= 0.25} reverse />
+                  {powerUps.length > 0 && (
+                    <div className="flex gap-2 flex-wrap pt-1">
+                      {powerUps.filter(p => p.key === 'shield' || p.expiresAt > performance.now()).map(p => {
+                        const remaining = p.key === 'shield' ? 0 : Math.ceil((p.expiresAt - performance.now()) / 1000);
+                        const label = p.key === 'slow' ? 'Slow' : p.key === 'double' ? 'Double' : 'Shield';
+                        const color = p.key === 'slow' ? 'bg-blue-500/80' : p.key === 'double' ? 'bg-fuchsia-500/80' : 'bg-emerald-600/80';
+                        return (
+                          <span key={p.key} className={`pointer-events-auto text-[10px] tracking-wide font-semibold px-2 py-1 rounded-full text-white backdrop-blur ${color}`}>
+                            {label}{p.key !== 'shield' && <span className="ml-1 opacity-80">{remaining}s</span>}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Celebration burst */}
               {celebrate && !reducedMotion && (
@@ -575,6 +611,11 @@ export default function Page() {
                   >
                     Tap to Begin
                   </button>
+                  <div className="flex gap-1">
+                    <button onClick={() => addPowerUp('slow')} className="px-2 py-1 text-[10px] rounded bg-blue-500 text-white">Slow</button>
+                    <button onClick={() => addPowerUp('double')} className="px-2 py-1 text-[10px] rounded bg-fuchsia-500 text-white">Double</button>
+                    <button onClick={() => addPowerUp('shield')} className="px-2 py-1 text-[10px] rounded bg-emerald-600 text-white">Shield</button>
+                  </div>
                   <label className="flex items-center gap-2 text-xs sm:text-sm text-gray-700 dark:text-gray-200">
                     <input
                       type="checkbox"
@@ -674,6 +715,28 @@ function InfoPill({ label, value, emphasize }: { label: string; value: string; e
     >
       <div className="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-300">{label}</div>
       <div className={`text-lg font-bold tabular-nums ${emphasize ? "text-red-600 dark:text-red-300" : ""}`}>{value}</div>
+    </div>
+  );
+}
+
+function HpBar({ label, pct, colorFrom, colorTo, danger, reverse }: { label: string; pct: number; colorFrom: string; colorTo: string; danger?: boolean; reverse?: boolean }) {
+  const clamped = Math.max(0, Math.min(1, pct));
+  return (
+    <div className="w-full">
+      <div className="flex justify-between mb-0.5 text-[10px] font-semibold tracking-wide text-white drop-shadow">
+        <span>{label}</span>
+        <span>{Math.ceil(clamped * 100)}%</span>
+      </div>
+      <div className="h-3 w-full rounded-full bg-black/30 overflow-hidden ring-1 ring-white/10 backdrop-blur-sm">
+        <div
+          className={`h-full transition-[width] duration-120 ease-linear ${danger ? 'animate-pulse' : ''}`}
+          style={{
+            width: `${clamped * 100}%`,
+            background: `linear-gradient(90deg, ${colorFrom}, ${colorTo})`,
+            transform: reverse ? 'scaleX(-1)' : undefined
+          }}
+        />
+      </div>
     </div>
   );
 }
