@@ -1,6 +1,5 @@
 export interface BeachWeatherSnapshot {
   tempC: number; // air temperature
-  uv: number; // UV index
   precipProb: number; // 0-100
   windKph: number; // wind speed
   cloudCover: number; // 0-100
@@ -18,11 +17,7 @@ export function computeBeachScore(w: BeachWeatherSnapshot): { score: number; fac
     tempComponent = Math.max(0, 1 - dist / 15); // degrade per 15C delta
   }
 
-  // UV: sweet spot moderate <8, penalize extremes >10 or very low (<2) a bit
-  let uvComponent = 1;
-  if (w.uv > 10) uvComponent = 0.4;
-  else if (w.uv > 8) uvComponent = 0.7;
-  else if (w.uv < 2) uvComponent = 0.6;
+  // UV removed from scoring per design decision
 
   // Precip probability low is good
   const precipComponent = w.precipProb <= 20 ? 1 : w.precipProb >= 80 ? 0 : 1 - (w.precipProb - 20) / 60;
@@ -38,19 +33,17 @@ export function computeBeachScore(w: BeachWeatherSnapshot): { score: number; fac
   else cloudComponent = Math.max(0.4, 1 - (cc - 0.45) * 1.5);
 
   // weights
-  const weights = { temp: 0.25, uv: 0.15, precip: 0.25, wind: 0.2, cloud: 0.15 };
+  const weights = { temp: 0.35, precip: 0.35, wind: 0.25, cloud: 0.15 };
   const score =
-    tempComponent * weights.temp +
-    uvComponent * weights.uv +
-    precipComponent * weights.precip +
-    windComponent * weights.wind +
-    cloudComponent * weights.cloud;
+  tempComponent * weights.temp +
+  precipComponent * weights.precip +
+  windComponent * weights.wind +
+  cloudComponent * weights.cloud;
 
   return {
     score: Math.round(score * 100),
     factors: {
       temp: tempComponent,
-      uv: uvComponent,
       precip: precipComponent,
       wind: windComponent,
       cloud: cloudComponent,

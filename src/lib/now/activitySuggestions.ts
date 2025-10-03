@@ -171,7 +171,6 @@ const ACTIVITIES: ActivitySuggestion[] = [
 
 interface WeatherContext {
   tempC: number;
-  uv: number;
   precipProb: number;
   windKph: number;
   cloudCover: number;
@@ -236,11 +235,7 @@ export function getActivitySuggestions(
       else if (weather.tempC >= 18 && weather.tempC <= 28) score += 10;
     }
 
-    // UV considerations
-    if (activity.icon.includes('🏃') || activity.icon.includes('🏐')) {
-      if (weather.uv > 8) score -= 10;
-      else if (weather.uv >= 4 && weather.uv <= 7) score += 5;
-    }
+    // UV considerations removed
 
     // Wind considerations
     if (activity.id === 'beach-volleyball' || activity.id === 'picnic') {

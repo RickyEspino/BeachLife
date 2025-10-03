@@ -4,7 +4,6 @@ import React from "react";
 export interface ConditionsBarProps {
   tempC: number;
   condition?: string;
-  uv: number;
   windKph: number;
   beachScore: number; // 0-100
 }
@@ -16,7 +15,7 @@ function scoreColor(score: number) {
   return "bg-rose-500";
 }
 
-export const ConditionsBar: React.FC<ConditionsBarProps> = ({ tempC, condition, uv: _uv, windKph, beachScore }) => {
+export const ConditionsBar: React.FC<ConditionsBarProps> = ({ tempC, condition, windKph, beachScore }) => {
   const tempF = Math.round((tempC * 9) / 5 + 32);
   const windMph = Math.round(windKph * 0.621371);
   return (

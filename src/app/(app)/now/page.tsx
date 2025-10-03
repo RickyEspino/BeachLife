@@ -112,12 +112,12 @@ export default async function NowPage() {
   // Default location placeholder (could be user-configurable later)
   const lat = 34.0195; // Santa Monica approx
   const lon = -118.4912;
-  let weather: { tempC: number; uv: number; precipProb: number; windKph: number; cloudCover: number; condition: string } | null = null;
-  let hourlyData: Array<{ time: string; tempC: number; uv: number; precipProb: number; windKph: number; cloudCover: number }> = [];
+  let weather: { tempC: number; precipProb: number; windKph: number; cloudCover: number; condition: string } | null = null;
+  let hourlyData: Array<{ time: string; tempC: number; precipProb: number; windKph: number; cloudCover: number }> = [];
   
   try {
     const weatherRes = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,cloud_cover,precipitation,wind_speed_10m&hourly=temperature_2m,uv_index,precipitation_probability,wind_speed_10m,cloud_cover&forecast_days=1`,
+  `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,cloud_cover,precipitation,wind_speed_10m&hourly=temperature_2m,precipitation_probability,wind_speed_10m,cloud_cover&forecast_days=1`,
       { next: { revalidate: 600 } }
     );
     if (weatherRes.ok) {
@@ -125,31 +125,27 @@ export default async function NowPage() {
       const current = data.current;
       const hourly = data.hourly;
       
-      // Find current hour index for uv / precip prob
-      let uv = 0;
+  // Find current hour index for precip prob
       let precipProb = 0;
       if (hourly?.time && Array.isArray(hourly.time)) {
         const nowIso = new Date().toISOString().slice(0, 13); // yyyy-mm-ddThh
         const idx = hourly.time.findIndex((t: string) => t.startsWith(nowIso));
         if (idx !== -1) {
-          uv = Number(hourly.uv_index?.[idx] ?? 0);
           precipProb = Number(hourly.precipitation_probability?.[idx] ?? 0);
         }
 
-        // Build hourly data for best window calculation
+        // Build hourly data for best window calculation (uv removed)
         hourlyData = hourly.time.map((time: string, i: number) => ({
           time,
-          tempC: Number(hourly.temperature_2m?.[i] ?? 0),
-          uv: Number(hourly.uv_index?.[i] ?? 0),
-          precipProb: Number(hourly.precipitation_probability?.[i] ?? 0),
-          windKph: Number(hourly.wind_speed_10m?.[i] ?? 0),
-          cloudCover: Number(hourly.cloud_cover?.[i] ?? 0),
+            tempC: Number(hourly.temperature_2m?.[i] ?? 0),
+            precipProb: Number(hourly.precipitation_probability?.[i] ?? 0),
+            windKph: Number(hourly.wind_speed_10m?.[i] ?? 0),
+            cloudCover: Number(hourly.cloud_cover?.[i] ?? 0),
         }));
       }
       
       weather = {
         tempC: Number(current.temperature_2m),
-        uv,
         precipProb,
         windKph: Number(current.wind_speed_10m ?? 0),
         cloudCover: Number(current.cloud_cover ?? 0),
@@ -162,14 +158,12 @@ export default async function NowPage() {
 
   const beachScore = weather ? computeBeachScore({
     tempC: weather.tempC,
-    uv: weather.uv,
     precipProb: weather.precipProb,
     windKph: weather.windKph,
     cloudCover: weather.cloudCover,
   }) : null;
   const advice = weather ? buildWeatherAdvice({
     tempC: weather.tempC,
-    uv: weather.uv,
     precipProb: weather.precipProb,
     windKph: weather.windKph,
     cloudCover: weather.cloudCover,
@@ -194,7 +188,6 @@ export default async function NowPage() {
   const activitySuggestions = weather ? getActivitySuggestions(
     {
       tempC: weather.tempC,
-      uv: weather.uv,
       precipProb: weather.precipProb,
       windKph: weather.windKph,
       cloudCover: weather.cloudCover,
@@ -302,7 +295,6 @@ export default async function NowPage() {
         {weather && beachScore && (
           <ConditionsBar
             tempC={weather.tempC}
-            uv={weather.uv}
             windKph={weather.windKph}
             condition={weather.condition}
             beachScore={beachScore.score}
