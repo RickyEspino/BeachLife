@@ -213,7 +213,7 @@ export default function Page() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Lightning scheduler (6–14s), with audio
+  // Lightning scheduler (6–14s) + thunder audio
   useEffect(() => {
     let alive = true;
     const schedule = () => {
@@ -221,23 +221,15 @@ export default function Page() {
       strikeTimer.current = window.setTimeout(() => {
         if (!alive) return;
         setStrikeOn(true);
-        // play thunder
-        const a = thunderRef.current;
-        if (a) {
-          try {
-            if (a.currentTime) a.currentTime = 0;
-            void a.play();
-          } catch {}
-        }
+        // Requested thunder playback pattern
+        if (thunderRef.current?.currentTime) thunderRef.current.currentTime = 0;
+        thunderRef.current?.play().catch(() => {});
         window.setTimeout(() => setStrikeOn(false), 520);
         schedule();
       }, delay);
     };
     schedule();
-    return () => {
-      alive = false;
-      if (strikeTimer.current) clearTimeout(strikeTimer.current);
-    };
+    return () => { alive = false; if (strikeTimer.current) clearTimeout(strikeTimer.current); };
   }, []);
 
   const flash = useCallback((id: Part) => {
