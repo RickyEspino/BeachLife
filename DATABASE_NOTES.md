@@ -61,10 +61,12 @@ Promotion for high combo (>=12) bumps one tier up to S max.
 - Introduce partitioning by month if row count grows (e.g., >= 50M events) to keep index bloat manageable.
 - Add server-enforced unique key on (user_id, started_at) if duplicate spam emerges.
 
-## RLS (Future)
-Currently assumed open for internal dev. Before prod hardening:
-- Enable RLS on quick_battle_runs and quick_battle_events.
-- Policies: users can select only their rows; insert own; update only unfinished own run; no delete except service role.
+## RLS (Implemented)
+Row Level Security policies are defined in `CRAB_BATTLE_RLS.sql` (idempotent). Summary:
+- quick_battle_runs: insert/select/update (unfinished only) limited to owning `user_id = auth.uid()`.
+- quick_battle_events: insert allowed only if run owned & unfinished; select limited to owned runs' events.
+- No delete policies so only service role can delete.
+Apply script after base schema. Verify with `SELECT * FROM pg_policies WHERE tablename IN ('quick_battle_runs','quick_battle_events');`.
 
 ## Cleanup / Retention
 - Consider cron (Supabase scheduled function) to purge orphan unfinished runs older than 24h.

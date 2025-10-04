@@ -116,6 +116,22 @@ export async function POST(req: NextRequest) {
       .eq('id', run_id);
     if (updateErr) throw updateErr;
 
+    // Aggregate metrics logging (best effort) into hourly table
+    try {
+      await supabase.from('quick_battle_hourly_stats').insert({
+        user_id: user.id,
+        hour_bucket: new Date(new Date(finishedAt).setMinutes(0,0,0)).toISOString(),
+        runs: 1,
+        victories: victory ? 1 : 0,
+        total_damage: dmg,
+        total_duration_seconds: duration_seconds,
+        total_shells: shells,
+        total_dps: realDps
+      });
+    } catch (mErr) {
+      console.warn('quick_battle_hourly_stats insert failed', mErr);
+    }
+
     // Emit RUN_FINISH event
     const { error: eventError } = await supabase.from('quick_battle_events').insert({
       run_id,
