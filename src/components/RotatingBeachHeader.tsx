@@ -2,21 +2,22 @@
 
 import { useEffect, useState } from "react";
 
-// Words + Tailwind text color classes
+// Words + Tailwind text color classes (just the changing noun)
 const WORDS: { word: string; color: string }[] = [
-  { word: "beach", color: "text-teal-600" },
-  { word: "shore", color: "text-sky-600" },
-  { word: "sand", color: "text-amber-600" },
-  { word: "coast", color: "text-emerald-600" },
-  { word: "surf", color: "text-indigo-600" },
+  { word: "BEACH", color: "text-teal-500" },
+  { word: "SHORE", color: "text-sky-500" },
+  { word: "SAND", color: "text-amber-500" },
+  { word: "COAST", color: "text-emerald-500" },
+  { word: "SURF", color: "text-indigo-500" },
 ];
 
 /**
  * RotatingBeachHeader
- * Life is better on the (rotating word)
+ * "Life is better"
+ * "ON THE {ROTATING WORD}"
  * - Rotates every 3 seconds
- * - Each word has a distinct color
- * - Forced line break before rotating word to prevent horizontal layout shift
+ * - Second line is uppercase
+ * - Forced line break to avoid layout shift
  */
 export function RotatingBeachHeader() {
   const [index, setIndex] = useState(0);
@@ -32,17 +33,19 @@ export function RotatingBeachHeader() {
 
   return (
     <h2 className="text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
-      <span className="block">Life is better on the</span>
+      <span className="block">Life is better</span>
       <span
         key={current.word}
-        className={`block min-h-[1.1em] transition-colors duration-700 ${current.color}`}
+        className="block min-h-[1.1em] uppercase"
         aria-live="polite"
       >
-        {current.word}
+        <span className="text-white/90">ON THE </span>
+        <span className={`transition-colors duration-700 ${current.color}`}>
+          {current.word}
+        </span>
       </span>
     </h2>
   );
 }
 
 export default RotatingBeachHeader;
-
