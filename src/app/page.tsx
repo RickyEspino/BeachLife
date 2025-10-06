@@ -13,22 +13,23 @@ export default function Home() {
       <div className="absolute inset-0 bg-black/20 pointer-events-none" />
 
       <div className="relative">
-        <h1 className="text-2xl font-semibold leading-tight text-white">
-          <span>Life’s Better.</span> <br />
+        <h1 className="pt-20 text-4xl font-semibold leading-tight text-white">
+          <span>Life’s Better</span> <br />
           <span className="text-emerald-400">ON THE SHORE.</span>
         </h1>
 
         <p className="mt-2 text-white/90">
-          Discover, Earn, and Connect with BeachLife.
+          Discover, Earn, and Connect <br /> with BeachLife.
         </p>
 
         <div className="mt-6">
-          <Link
-            href="/login"
-            className="inline-block rounded-lg bg-black text-white px-4 py-2 font-medium shadow-md"
-          >
-            Join the BeachCrew
-          </Link>
+<Link
+  href="/login"
+  className="block w-fit text-emerald-400 font-medium underline underline-offset-4 hover:underline-offset-2 hover:text-emerald-300 transition"
+>
+  Join the BeachCrew
+</Link>
+
         </div>
       </div>
     </main>
