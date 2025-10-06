@@ -25,7 +25,7 @@ export default function Home() {
       </div>
 
       {/* bottom-right link, matching top padding (pt-5 -> bottom-5) */}
-      <div className="absolute right-6 bottom-5 z-10">
+      <div className="absolute right-6 bottom-20 z-10">
         <Link
           href="/login"
           className="group inline-flex items-center gap-2 text-lg font-bold italic text-black underline underline-offset-4 hover:underline-offset-2 hover:text-emerald-300 transition"
