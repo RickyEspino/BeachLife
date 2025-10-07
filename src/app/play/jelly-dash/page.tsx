@@ -118,11 +118,12 @@ export default function Page() {
     scheduleSpawner(tPearl, BASE_SPAWN_PEARL_MS, 0.80, 1.20, () => spawn("pearl"));
     scheduleSpawner(tShield, BASE_SPAWN_SHIELD_MS, 0.85, 1.30, () => spawn("shield"));
     return () => {
-      if (tJelly.current) clearTimeout(tJelly.current);
-      if (tPearl.current) clearTimeout(tPearl.current);
-      if (tShield.current) clearTimeout(tShield.current);
+      const tj = tJelly.current; if (tj) clearTimeout(tj);
+      const tp = tPearl.current; if (tp) clearTimeout(tp);
+      const ts = tShield.current; if (ts) clearTimeout(ts);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // We intentionally exclude dependencies on spawn/scheduleSpawner because they are stable
+    // and we only want to re-run when running toggles.
   }, [running]); // uses ramp() at schedule time
 
   // ------- Game loop -------
