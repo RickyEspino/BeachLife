@@ -43,22 +43,22 @@ export const ConditionsBar: React.FC<ConditionsBarProps> = ({ tempC, condition, 
   return (
     <div className="flex flex-wrap items-center gap-4 rounded-xl border p-3 text-sm">
       <div className="flex items-baseline gap-1 font-semibold">
-        <span className="text-2xl">{tempF}°</span>
+        <span className="text-2xl text-black">{tempF}°</span>
         <span className="text-xs text-gray-500">F</span>
       </div>
       {condition && <div className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 font-medium">{condition}</div>}
       <div className="flex items-center gap-1">
-        <span className="font-medium">Wind</span>
+        <span className="font-medium text-black">Wind</span>
         <span className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-700">{windMph} mph{windDir && <span className="ml-1 text-xs text-gray-500">{windDir}</span>}</span>
       </div>
       {humidity != null && (
         <div className="flex items-center gap-1">
-          <span className="font-medium">Hum</span>
+          <span className="font-medium text-black">Hum</span>
           <span className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-700">{Math.round(humidity)}%</span>
         </div>
       )}
       <div className="flex items-center gap-1">
-        <span className="font-medium">Air</span>
+        <span className="font-medium text-black">Air</span>
         <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${aqiInfo.className}`}>{aqiInfo.label}</span>
       </div>
       {pollenLevel && (
