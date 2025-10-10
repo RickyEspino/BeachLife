@@ -107,19 +107,19 @@ export default function LoginPage() {
             {/* helper text */}
             <p className="mt-6 text-xs text-white/70">
               By continuing, you agree to the{" "}
-              <a
+              <Link
                 className="underline underline-offset-4 hover:text-emerald-300"
                 href="/terms"
               >
                 Terms
-              </a>{" "}
+              </Link>{" "}
               and{" "}
-              <a
+              <Link
                 className="underline underline-offset-4 hover:text-emerald-300"
                 href="/privacy"
               >
                 Privacy Policy
-              </a>
+              </Link>
               .
             </p>
           </div>

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/serverClient";
 import OnboardingAvatarClient from './OnboardingAvatarClient';
@@ -175,7 +176,7 @@ export default async function OnboardingPage({ searchParams }: Props) {
                 </button>
               </form>
               <div className="mt-4 text-[11px] text-gray-500 flex flex-wrap items-center gap-2">
-                <a href="/me" className="underline underline-offset-4 hover:no-underline">Back to dashboard</a>
+                <Link href="/me" className="underline underline-offset-4 hover:no-underline">Back to dashboard</Link>
                 <span className="hidden sm:inline">•</span>
                 <span>Claimables live in <span className="font-medium">Now</span> and <span className="font-medium">Me → Wallet</span>.</span>
               </div>

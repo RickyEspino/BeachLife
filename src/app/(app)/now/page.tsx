@@ -20,9 +20,17 @@ import { calculateEnhancedStreak } from "@/lib/now/streak";
 import { StreakCard } from "@/components/now/StreakCard";
 import { awardPointsOnce, awardPointsOncePerDay } from "@/app/actions/points";
 import Link from "next/link";
-import CrabEventAlert from '@/components/now/CrabEventAlert';
+import CrabEventAlert from "@/components/now/CrabEventAlert";
 
 export const dynamic = "force-dynamic"; // surface daily availability immediately
+
+// Helper: get YYYY-MM-DDTHH for a given IANA timezone (hour alignment with Open-Meteo hourly slots)
+function localIsoHour(timeZone: string): string {
+  // sv-SE gives "YYYY-MM-DD HH:mm:ss"
+  const s = new Date().toLocaleString("sv-SE", { timeZone, hour12: false });
+  // convert to "YYYY-MM-DDTHH"
+  return s.slice(0, 13).replace(" ", "T");
+}
 
 export default async function NowPage() {
   const supabase = createSupabaseServerClient();
@@ -34,16 +42,20 @@ export default async function NowPage() {
   // Unauthed: simple landing w/ CTA
   if (!user) {
     return (
-      <main className="p-6">
-        <div className="mx-auto max-w-2xl space-y-4">
-          <h1 className="text-2xl font-semibold">Now</h1>
-          <p className="text-gray-600">Sign in to see your beach status and claim rewards.</p>
-          <Link
-            href="/login"
-            className="inline-flex rounded-lg bg-black text-white px-4 py-2 font-medium"
-          >
-            Sign in
-          </Link>
+      <main className="min-h-[100svh] bg-gradient-to-b from-emerald-50 via-emerald-100 to-emerald-200">
+        <div className="p-6">
+          <div className="mx-auto max-w-2xl space-y-4">
+            <h1 className="text-2xl font-semibold">Now</h1>
+            <p className="text-gray-700">
+              Sign in to see your beach status, get real-time advice, and claim rewards.
+            </p>
+            <Link
+              href="/login"
+              className="inline-flex rounded-lg bg-black text-white px-4 py-2 font-medium"
+            >
+              Sign in
+            </Link>
+          </div>
         </div>
       </main>
     );
@@ -66,7 +78,7 @@ export default async function NowPage() {
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(100);
-  
+
   const streakData = calculateEnhancedStreak(allPointEvents || []);
 
   // DAILY CLAIM CHECK (UTC)
@@ -109,36 +121,93 @@ export default async function NowPage() {
   }
   // ------------------------------------------
 
-  // --- Weather fetch (simple public API: Open-Meteo) ---
-  // Default location placeholder (could be user-configurable later)
-  const lat = 34.0195; // Santa Monica approx
-  const lon = -118.4912;
-  let weather: { tempC: number; uv: number; precipProb: number; windKph: number; windDir: number; humidity: number; cloudCover: number; condition: string; aqi?: number; pollenLevel?: string } | null = null;
-  let hourlyData: Array<{ time: string; tempC: number; uv: number; precipProb: number; windKph: number; cloudCover: number }> = [];
-  
+  // --- Weather fetch (Open-Meteo) ---
+  // Default: Myrtle Beach, SC (user base) — update later per-user/GPS
+  const lat = 33.689; // Myrtle Beach approx
+  const lon = -78.886;
+  const tzIana = "America/New_York";
+  const tzParam = encodeURIComponent(tzIana); // timezone-aware hourly alignment
+
+  // ---- Types for external APIs (Open-Meteo) ----
+  type OpenMeteoWeatherHourly = {
+    time: string[];
+    uv_index?: number[];
+    precipitation_probability?: number[];
+    temperature_2m?: number[];
+    wind_speed_10m?: number[];
+    cloud_cover?: number[];
+    relative_humidity_2m?: number[];
+  };
+  type OpenMeteoWeatherCurrent = {
+    temperature_2m?: number;
+    wind_speed_10m?: number;
+    wind_direction_10m?: number;
+    relative_humidity_2m?: number;
+    cloud_cover?: number;
+    weather_code?: number;
+  };
+  type OpenMeteoWeather = {
+    current?: OpenMeteoWeatherCurrent;
+    hourly?: OpenMeteoWeatherHourly;
+  };
+  type OpenMeteoAQIHourly = { time: string[]; us_aqi: number[] };
+  type OpenMeteoAQI = { hourly?: OpenMeteoAQIHourly };
+  type OpenMeteoPollenHourly = {
+    time: string[];
+    grass_pollen?: number[];
+    tree_pollen?: number[];
+    weed_pollen?: number[];
+  };
+  type OpenMeteoPollen = { hourly?: OpenMeteoPollenHourly };
+
+  type WeatherNow = {
+    tempC: number;
+    uv: number;
+    precipProb: number;
+    windKph: number;
+    windDir: number;
+    humidity: number;
+    cloudCover: number;
+    condition: string;
+    aqi?: number;
+    pollenLevel?: string;
+  };
+
+  let weather: WeatherNow | null = null;
+  let hourlyData: Array<{
+    time: string;
+    tempC: number;
+    uv: number;
+    precipProb: number;
+    windKph: number;
+    cloudCover: number;
+  }> = [];
+
   try {
     const weatherRes = await fetch(
-  `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,cloud_cover,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m&hourly=temperature_2m,uv_index,precipitation_probability,wind_speed_10m,cloud_cover,relative_humidity_2m&forecast_days=1`,
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&timezone=${tzParam}&current=temperature_2m,apparent_temperature,weather_code,cloud_cover,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m&hourly=temperature_2m,uv_index,precipitation_probability,wind_speed_10m,cloud_cover,relative_humidity_2m&forecast_days=1`,
       { next: { revalidate: 600 } }
     );
+
     if (weatherRes.ok) {
-      const data = await weatherRes.json();
-      const current = data.current;
-      const hourly = data.hourly;
-      
-      // Find current hour index for uv / precip prob
+      const data: OpenMeteoWeather = await weatherRes.json();
+      const current: OpenMeteoWeatherCurrent = data.current ?? {};
+      const hourly: OpenMeteoWeatherHourly | undefined = data.hourly;
+
+      // Use exact local hour token to match Open-Meteo hourly buckets
+      const hourToken = localIsoHour(tzIana); // "YYYY-MM-DDTHH"
       let uv = 0;
       let precipProb = 0;
-      if (hourly?.time && Array.isArray(hourly.time)) {
-        const nowIso = new Date().toISOString().slice(0, 13); // yyyy-mm-ddThh
-        const idx = hourly.time.findIndex((t: string) => t.startsWith(nowIso));
+
+      if (hourly && Array.isArray(hourly.time)) {
+        const idx = hourly.time.findIndex((t) => t.slice(0, 13) === hourToken);
+
         if (idx !== -1) {
           uv = Number(hourly.uv_index?.[idx] ?? 0);
           precipProb = Number(hourly.precipitation_probability?.[idx] ?? 0);
         }
 
-        // Build hourly data for best window calculation
-        hourlyData = hourly.time.map((time: string, i: number) => ({
+        hourlyData = hourly.time.map((time, i) => ({
           time,
           tempC: Number(hourly.temperature_2m?.[i] ?? 0),
           uv: Number(hourly.uv_index?.[i] ?? 0),
@@ -147,50 +216,57 @@ export default async function NowPage() {
           cloudCover: Number(hourly.cloud_cover?.[i] ?? 0),
         }));
       }
-      
-      // Secondary fetch: Air Quality (US AQI) + optional pollen (graceful fallback)
+
+      // Secondary fetch: Air Quality (US AQI)
       let aqi: number | undefined;
+      try {
+        const aqiRes = await fetch(
+          `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&timezone=${tzParam}&hourly=us_aqi&forecast_days=1`,
+          { next: { revalidate: 600 } }
+        );
+        if (aqiRes.ok) {
+          const aqiData: OpenMeteoAQI = await aqiRes.json();
+          const hTimes: string[] = aqiData.hourly?.time || [];
+          const hAqi: number[] = aqiData.hourly?.us_aqi || [];
+          const aIdx = hTimes.findIndex((t) => t.slice(0, 13) === hourToken);
+          if (aIdx !== -1) aqi = Number(hAqi[aIdx]);
+        }
+      } catch {
+        // ignore AQI errors
+      }
+
+      // Optional: Pollen (not always available)
       let pollenLevel: string | undefined;
       try {
-        const aqiRes = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=us_aqi&forecast_days=1`, { next: { revalidate: 600 } });
-        if (aqiRes.ok) {
-          const aqiData = await aqiRes.json();
-            const hTimes: string[] = aqiData.hourly?.time || [];
-            const hAqi: number[] = aqiData.hourly?.us_aqi || [];
-            const nowIso2 = new Date().toISOString().slice(0,13);
-            const aIdx = hTimes.findIndex(t => t.startsWith(nowIso2));
-            if (aIdx !== -1) aqi = Number(hAqi[aIdx]);
-        }
-      } catch {}
-      try {
-        // Pollen attempt (may not be supported for all locales)
-        const pollenRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=grass_pollen,tree_pollen,weed_pollen&forecast_days=1`, { next: { revalidate: 10800 } });
+        const pollenRes = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&timezone=${tzParam}&hourly=grass_pollen,tree_pollen,weed_pollen&forecast_days=1`,
+          { next: { revalidate: 10800 } }
+        );
         if (pollenRes.ok) {
-          const pData = await pollenRes.json();
-          const pHour = pData.hourly?.time || [];
-          const nowIso3 = new Date().toISOString().slice(0,13);
-          const pIdx = pHour.findIndex((t: string) => t.startsWith(nowIso3));
-          if (pIdx !== -1) {
-            const gp = Number(pData.hourly?.grass_pollen?.[pIdx] ?? 0);
-            const tp = Number(pData.hourly?.tree_pollen?.[pIdx] ?? 0);
-            const wp = Number(pData.hourly?.weed_pollen?.[pIdx] ?? 0);
+          const pData: OpenMeteoPollen = await pollenRes.json();
+          const pHour: string[] = pData.hourly?.time || [];
+          const pIdx = pHour.findIndex((t) => t.slice(0, 13) === hourToken);
+          if (pIdx !== -1 && pData.hourly) {
+            const gp = Number(pData.hourly.grass_pollen?.[pIdx] ?? 0);
+            const tp = Number(pData.hourly.tree_pollen?.[pIdx] ?? 0);
+            const wp = Number(pData.hourly.weed_pollen?.[pIdx] ?? 0);
             const avg = (gp + tp + wp) / 3;
-            if (!isNaN(avg)) {
-              pollenLevel = avg < 20 ? 'Low' : avg < 60 ? 'Moderate' : 'High';
-            }
+            if (!isNaN(avg)) pollenLevel = avg < 20 ? "Low" : avg < 60 ? "Moderate" : "High";
           }
         }
-      } catch {}
+      } catch {
+        // ignore pollen errors
+      }
 
       weather = {
-        tempC: Number(current.temperature_2m),
+        tempC: Number(current.temperature_2m ?? 0),
         uv,
         precipProb,
         windKph: Number(current.wind_speed_10m ?? 0),
         windDir: Number(current.wind_direction_10m ?? 0),
         humidity: Number(current.relative_humidity_2m ?? 0),
         cloudCover: Number(current.cloud_cover ?? 0),
-        condition: mapWeatherCode(current.weather_code),
+        condition: mapWeatherCode(Number(current.weather_code ?? 0)),
         aqi,
         pollenLevel,
       };
@@ -199,20 +275,28 @@ export default async function NowPage() {
     // swallow network errors gracefully
   }
 
-  const beachScore = weather ? computeBeachScore({
-    tempC: weather.tempC,
-    uv: weather.uv,
-    precipProb: weather.precipProb,
-    windKph: weather.windKph,
-    cloudCover: weather.cloudCover,
-  }) : null;
-  const advice = weather ? buildWeatherAdvice({
-    tempC: weather.tempC,
-    uv: weather.uv,
-    precipProb: weather.precipProb,
-    windKph: weather.windKph,
-    cloudCover: weather.cloudCover,
-  }) : [];
+  const beachScore =
+    weather
+      ? computeBeachScore({
+          tempC: weather.tempC,
+          uv: weather.uv,
+          precipProb: weather.precipProb,
+          windKph: weather.windKph,
+          cloudCover: weather.cloudCover,
+        })
+      : null;
+
+  const advice =
+    weather
+      ? buildWeatherAdvice({
+          tempC: weather.tempC,
+          uv: weather.uv,
+          precipProb: weather.precipProb,
+          windKph: weather.windKph,
+          cloudCover: weather.cloudCover,
+        })
+      : [];
+
   const greeting = buildGreeting(username);
 
   // Calculate sunset time and quality
@@ -230,148 +314,139 @@ export default async function NowPage() {
   const tideAdvice = getTideAdvice(tidePhase);
 
   // Generate activity suggestions
-  const activitySuggestions = weather ? getActivitySuggestions(
-    {
-      tempC: weather.tempC,
-      uv: weather.uv,
-      precipProb: weather.precipProb,
-      windKph: weather.windKph,
-      cloudCover: weather.cloudCover,
-      condition: weather.condition,
-    },
-    {
-      hour: new Date().getHours(),
-      isWeekend: new Date().getDay() === 0 || new Date().getDay() === 6,
-    },
-    tidePhase
-  ) : [];
+  const activitySuggestions = weather
+    ? getActivitySuggestions(
+        {
+          tempC: weather.tempC,
+          uv: weather.uv,
+          precipProb: weather.precipProb,
+          windKph: weather.windKph,
+          cloudCover: weather.cloudCover,
+          condition: weather.condition,
+        },
+        {
+          hour: new Date().getHours(),
+          isWeekend: new Date().getDay() === 0 || new Date().getDay() === 6,
+        },
+        tidePhase
+      )
+    : [];
 
   return (
-    <main className="p-6">
-      <div className="mx-auto max-w-2xl space-y-5">
-        <RotatingBeachHeader />
-        {/* King Crab Event Alert (client / ephemeral) */}
-        <CrabEventAlert />
+    <main className="min-h-[100svh] bg-gradient-to-b from-emerald-50 via-emerald-100 to-emerald-200">
+      <div className="p-6">
+        <div className="mx-auto max-w-2xl space-y-5">
+          <RotatingBeachHeader />
 
-        {/* Goals / actions moved above highlights */}
-        {(canClaimDaily || canClaimProfileComplete) && (
-          <section className="rounded-xl border p-4 space-y-3 bg-white/70 backdrop-blur-sm">
-            <h2 className="font-semibold tracking-tight text-sm text-gray-700">Quick actions</h2>
-            <div className="flex flex-col sm:flex-row gap-3">
-              {canClaimDaily && (
-                <form action={claimDailyAction} className="group flex-1">
-                  <button type="submit" className="w-full h-full text-left rounded-lg border bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm hover:shadow transition focus:outline-none focus:ring-2 focus:ring-emerald-500/50">
-                    <div className="flex items-start gap-3">
-                      <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white text-xs font-semibold shadow">+500</span>
-                      <div className="flex-1">
-                        <div className="font-medium text-emerald-700">Daily check-in</div>
-                        <p className="text-xs text-emerald-800/80">Tap to claim today’s boost.</p>
+          {/* King Crab Event Alert (client / ephemeral) */}
+          <CrabEventAlert />
+
+          {/* Quick actions */}
+          {(canClaimDaily || canClaimProfileComplete) && (
+            <section
+              className="rounded-xl border bg-white/70 backdrop-blur-sm p-4 space-y-3"
+              aria-label="Quick actions"
+            >
+              <h2 className="font-semibold tracking-tight text-sm text-gray-700">Quick actions</h2>
+              <div className="flex flex-col sm:flex-row gap-3">
+                {canClaimDaily && (
+                  <form action={claimDailyAction} className="group flex-1">
+                    <button
+                      type="submit"
+                      className="w-full h-full text-left rounded-lg border bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm hover:shadow transition focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                      aria-label="Claim daily check-in bonus"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white text-xs font-semibold shadow">
+                          +500
+                        </span>
+                        <div className="flex-1">
+                          <div className="font-medium text-emerald-700">Daily check-in</div>
+                          <p className="text-xs text-emerald-800/80">Tap to claim today’s boost.</p>
+                        </div>
+                        <span className="text-emerald-600 text-sm font-medium group-hover:translate-x-0.5 transition">
+                          →
+                        </span>
                       </div>
-                      <span className="text-emerald-600 text-sm font-medium group-hover:translate-x-0.5 transition">→</span>
-                    </div>
-                  </button>
-                </form>
-              )}
-              {canClaimProfileComplete && (
-                <form action={claimProfileCompleteAction} className="group flex-1">
-                  <button type="submit" className="w-full h-full text-left rounded-lg border bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm hover:shadow transition focus:outline-none focus:ring-2 focus:ring-blue-500/50">
-                    <div className="flex items-start gap-3">
-                      <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white text-xs font-semibold shadow">+100</span>
-                      <div className="flex-1">
-                        <div className="font-medium text-blue-700">Complete profile</div>
-                        <p className="text-xs text-blue-800/80">Username + avatar bonus.</p>
+                    </button>
+                  </form>
+                )}
+                {canClaimProfileComplete && (
+                  <form action={claimProfileCompleteAction} className="group flex-1">
+                    <button
+                      type="submit"
+                      className="w-full h-full text-left rounded-lg border bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm hover:shadow transition focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                      aria-label="Claim profile completion bonus"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white text-xs font-semibold shadow">
+                          +100
+                        </span>
+                        <div className="flex-1">
+                          <div className="font-medium text-blue-700">Complete profile</div>
+                          <p className="text-xs text-blue-800/80">Username + avatar bonus.</p>
+                        </div>
+                        <span className="text-blue-600 text-sm font-medium group-hover:translate-x-0.5 transition">
+                          →
+                        </span>
                       </div>
-                      <span className="text-blue-600 text-sm font-medium group-hover:translate-x-0.5 transition">→</span>
-                    </div>
-                  </button>
-                </form>
-              )}
-            </div>
-          </section>
-        )}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </section>
+          )}
 
-        {/* Greeting line */}
-        <div>
-          <p className="text-gray-800 text-base font-semibold">{greeting}{username ? "!" : "!"}</p>
-          <p className="text-gray-600 text-sm mt-1">Plan the perfect beach day, check the weather, track tides, get activities suggestions and orginize your crew with BeachLife.</p>
-        </div>
-
-                {/* Other “Now” content can go here… */}
-  <section className="rounded-xl border p-4 space-y-3 bg-white/70 backdrop-blur-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold tracking-tight">Today’s beach highlights</h2>
-              <p className="text-sm text-gray-600">Quick wins & current conditions.</p>
-            </div>
+          {/* Greeting line */}
+          <div>
+            <p className="text-gray-800 text-base font-semibold">{greeting}!</p>
+            <p className="text-gray-700 text-sm mt-1">
+              Plan the perfect beach day, check the weather, track tides, get activity suggestions,
+              and organize your crew with BeachLife.
+            </p>
           </div>
 
-          {/* Goals / actions row */}
-          {(canClaimDaily || canClaimProfileComplete) && (
-            <div className="flex flex-col sm:flex-row gap-3">
-              {canClaimDaily && (
-                <form action={claimDailyAction} className="group flex-1">
-                  <button type="submit" className="w-full h-full text-left rounded-lg border bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm hover:shadow transition focus:outline-none focus:ring-2 focus:ring-emerald-500/50">
-                    <div className="flex items-start gap-3">
-                      <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white text-xs font-semibold shadow">+500</span>
-                      <div className="flex-1">
-                        <div className="font-medium text-emerald-700">Daily check-in</div>
-                        <p className="text-xs text-emerald-800/80">Tap to claim today’s boost.</p>
-                      </div>
-                      <span className="text-emerald-600 text-sm font-medium group-hover:translate-x-0.5 transition">→</span>
-                    </div>
-                  </button>
-                </form>
-              )}
-              {canClaimProfileComplete && (
-                <form action={claimProfileCompleteAction} className="group flex-1">
-                  <button type="submit" className="w-full h-full text-left rounded-lg border bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm hover:shadow transition focus:outline-none focus:ring-2 focus:ring-blue-500/50">
-                    <div className="flex items-start gap-3">
-                      <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white text-xs font-semibold shadow">+100</span>
-                      <div className="flex-1">
-                        <div className="font-medium text-blue-700">Complete profile</div>
-                        <p className="text-xs text-blue-800/80">Username + avatar bonus.</p>
-                      </div>
-                      <span className="text-blue-600 text-sm font-medium group-hover:translate-x-0.5 transition">→</span>
-                    </div>
-                  </button>
-                </form>
-              )}
+          {/* Highlights */}
+          <section className="rounded-xl border bg-white/80 backdrop-blur-sm p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold tracking-tight">Today’s beach highlights</h2>
+                <p className="text-sm text-gray-600">Quick wins & current conditions.</p>
+              </div>
             </div>
-          )}
-        </section>
 
-        {weather && beachScore && (
-          <ConditionsBar
-            tempC={weather.tempC}
-            windKph={weather.windKph}
-            windDirDeg={weather.windDir}
-            humidity={weather.humidity}
-            aqi={weather.aqi}
-            pollenLevel={weather.pollenLevel}
-            condition={weather.condition}
-            beachScore={beachScore.score}
-          />
-        )}
+            {weather && beachScore ? (
+              <ConditionsBar
+                tempC={weather.tempC}
+                windKph={weather.windKph}
+                windDirDeg={weather.windDir}
+                humidity={weather.humidity}
+                aqi={weather.aqi}
+                pollenLevel={weather.pollenLevel}
+                condition={weather.condition}
+                beachScore={beachScore.score}
+              />
+            ) : (
+              <div className="rounded-lg border border-dashed p-3 text-sm text-gray-600">
+                Current conditions are loading or temporarily unavailable.
+              </div>
+            )}
 
-        {advice.length > 0 && <AdviceChips advice={advice} />}
+            {advice.length > 0 && <AdviceChips advice={advice} />}
 
-        {bestWindow && <BestWindow window={bestWindow} />}
+            {bestWindow && <BestWindow window={bestWindow} />}
 
-        {sunsetQuality && (
-          <SunsetPanel sunsetTime={sunsetTime} quality={sunsetQuality} />
-        )}
+            {sunsetQuality && <SunsetPanel sunsetTime={sunsetTime} quality={sunsetQuality} />}
 
-        <TidePanel phase={tidePhase} advice={tideAdvice} />
+            <TidePanel phase={tidePhase} advice={tideAdvice} />
+          </section>
 
-        <StreakCard streak={streakData} />
+          <StreakCard streak={streakData} />
 
-        <ActivitySlideshow activities={activitySuggestions} />
+          <ActivitySlideshow activities={activitySuggestions} />
 
-        <EventsList events={todaysEvents} showUpcoming={true} />
-
-        {/* Removed old compact claimables (moved to highlights section) */}
-
-
+          <EventsList events={todaysEvents} showUpcoming={true} />
+        </div>
       </div>
     </main>
   );
@@ -380,12 +455,31 @@ export default async function NowPage() {
 // Basic mapping of WMO weather codes to human phrase
 function mapWeatherCode(code: number): string {
   const table: Record<number, string> = {
-    0: "Clear", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast",
-    45: "Fog", 48: "Fog", 51: "Drizzle", 53: "Drizzle", 55: "Drizzle",
-    56: "Freezing Drizzle", 57: "Freezing Drizzle", 61: "Rain", 63: "Rain", 65: "Heavy Rain",
-    66: "Freezing Rain", 67: "Freezing Rain", 71: "Snow", 73: "Snow", 75: "Heavy Snow",
-    80: "Rain Showers", 81: "Rain Showers", 82: "Rain Showers", 95: "Thunderstorm",
-    96: "Thunderstorm", 99: "Thunderstorm",
+    0: "Clear",
+    1: "Mainly Clear",
+    2: "Partly Cloudy",
+    3: "Overcast",
+    45: "Fog",
+    48: "Fog",
+    51: "Drizzle",
+    53: "Drizzle",
+    55: "Drizzle",
+    56: "Freezing Drizzle",
+    57: "Freezing Drizzle",
+    61: "Rain",
+    63: "Rain",
+    65: "Heavy Rain",
+    66: "Freezing Rain",
+    67: "Freezing Rain",
+    71: "Snow",
+    73: "Snow",
+    75: "Heavy Snow",
+    80: "Rain Showers",
+    81: "Rain Showers",
+    82: "Rain Showers",
+    95: "Thunderstorm",
+    96: "Thunderstorm",
+    99: "Thunderstorm",
   };
   return table[code] || "Weather";
 }
