@@ -32,7 +32,7 @@ export function RotatingBeachHeader() {
   const current = WORDS[index];
 
   return (
-    <h1 className="text-5xl text-black font-bold leading-tight tracking-tight sm:text-4xl">
+    <h1 className="text-4xl text-black font-bold leading-tight tracking-tight sm:text-4xl">
       <span className="block">Life is better</span>
       <span
         key={current.word}
