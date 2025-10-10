@@ -32,14 +32,14 @@ export function RotatingBeachHeader() {
   const current = WORDS[index];
 
   return (
-    <h2 className="text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
+    <h2 className="text-3xl text-black font-bold leading-tight tracking-tight sm:text-4xl">
       <span className="block">Life is better</span>
       <span
         key={current.word}
         className="block min-h-[1.1em] uppercase"
         aria-live="polite"
       >
-        <span className="text-white/90">ON THE </span>
+        <span className="text-black">ON THE </span>
         <span className={`transition-colors duration-700 ${current.color}`}>
           {current.word}
         </span>
