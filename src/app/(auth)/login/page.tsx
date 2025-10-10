@@ -3,7 +3,6 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browserClient";
 
 export default function LoginPage() {
@@ -53,7 +52,12 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="relative min-h-dvh p-6">
+    <main
+      className="
+        relative min-h-dvh p-6
+        bg-[url('/img/backgrounds/waves.png')] bg-cover bg-center bg-no-repeat
+      "
+    >
       {/* overlay for contrast */}
       <div className="absolute inset-0 bg-black/25 pointer-events-none z-0" />
 
@@ -128,7 +132,7 @@ export default function LoginPage() {
 
       {/* bottom-right hint link (optional) */}
       <div className="absolute right-6 bottom-5 z-10">
-        <Link
+        <a
           href="/"
           className="group inline-flex items-center gap-2 text-sm font-semibold italic text-white underline underline-offset-4 hover:underline-offset-2 hover:text-emerald-300 transition"
         >
@@ -139,7 +143,7 @@ export default function LoginPage() {
           >
             ←
           </span>
-        </Link>
+        </a>
       </div>
     </main>
   );
