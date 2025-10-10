@@ -333,7 +333,7 @@ export default async function NowPage() {
     : [];
 
   return (
-    <main className="min-h-[100svh] bg-gradient-to-b from-emerald-50 via-emerald-100 to-emerald-200">
+    <main className="min-h-[100svh] bg-gradient-to-b from-emerald-200 via-emerald-100 to-emerald-50">
       <div className="p-6">
         <div className="mx-auto max-w-2xl space-y-5">
           <RotatingBeachHeader />
@@ -400,18 +400,18 @@ export default async function NowPage() {
           {/* Greeting line */}
           <div>
             <p className="text-gray-800 text-base font-semibold">{greeting}!</p>
-            <p className="text-gray-700 text-sm mt-1">
+            <p className="text-gray-700 text-base mt-1">
               Plan the perfect beach day, check the weather, track tides, get activity suggestions,
               and organize your crew with BeachLife.
             </p>
           </div>
 
           {/* Highlights */}
-          <section className="rounded-xl border bg-white/80 backdrop-blur-sm p-4 space-y-3">
+          <section className="rounded-xl border bg-emerald-100 backdrop-blur-sm p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="font-semibold tracking-tight">Today’s beach highlights</h2>
-                <p className="text-sm text-gray-600">Quick wins & current conditions.</p>
+                <p className="text-sm text-gray-600">Weather & current conditions.</p>
               </div>
             </div>
 

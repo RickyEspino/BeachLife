@@ -1,6 +1,6 @@
 export function timeOfDayGreeting(date: Date): string {
   const h = date.getHours();
-  if (h < 5) return "Late night";
+  if (h < 5) return "Good night";
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
   if (h < 21) return "Good evening";
