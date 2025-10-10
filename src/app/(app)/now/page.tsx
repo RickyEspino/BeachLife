@@ -407,7 +407,7 @@ export default async function NowPage() {
           </div>
 
           {/* Highlights */}
-          <section className="rounded-xl border bg-emerald-700 backdrop-blur-sm p-4 space-y-3">
+          <section className="rounded-xl border bg-white backdrop-blur-sm p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="font-semibold text-black tracking-tight">Today’s beach highlights</h2>
