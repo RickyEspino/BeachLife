@@ -31,6 +31,17 @@ function localIsoHour(timeZone: string): string {
   // convert to "YYYY-MM-DDTHH"
   return s.slice(0, 13).replace(" ", "T");
 }
+// Helper: get YYYY-MM-DD in a timezone
+function localIsoDate(timeZone: string): string {
+  return new Date().toLocaleString("sv-SE", { timeZone, hour12: false }).slice(0, 10);
+}
+// Helper: get HH (00-23) in a timezone
+function localHour(timeZone: string): number {
+  return parseInt(
+    new Date().toLocaleString("sv-SE", { timeZone, hour12: false }).slice(11, 13),
+    10
+  );
+}
 
 export default async function NowPage() {
   const supabase = createSupabaseServerClient();
@@ -42,7 +53,7 @@ export default async function NowPage() {
   // Unauthed: simple landing w/ CTA
   if (!user) {
     return (
-      <main className="min-h-[100svh] bg-gradient-to-b from-emerald-50 via-emerald-100 to-emerald-200">
+      <main className="min-h-[100svh] bg-gradient-to-b from-emerald-200 via-emerald-100 to-emerald-50">
         <div className="p-6">
           <div className="mx-auto max-w-2xl space-y-4">
             <h1 className="text-2xl font-semibold">Now</h1>
@@ -184,8 +195,9 @@ export default async function NowPage() {
   }> = [];
 
   try {
+    // NOTE: fetch 2 days so we have enough hours; we'll filter to "today remaining" below.
     const weatherRes = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&timezone=${tzParam}&current=temperature_2m,apparent_temperature,weather_code,cloud_cover,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m&hourly=temperature_2m,uv_index,precipitation_probability,wind_speed_10m,cloud_cover,relative_humidity_2m&forecast_days=1`,
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&timezone=${tzParam}&current=temperature_2m,apparent_temperature,weather_code,cloud_cover,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m&hourly=temperature_2m,uv_index,precipitation_probability,wind_speed_10m,cloud_cover,relative_humidity_2m&forecast_days=2`,
       { next: { revalidate: 600 } }
     );
 
@@ -221,7 +233,7 @@ export default async function NowPage() {
       let aqi: number | undefined;
       try {
         const aqiRes = await fetch(
-          `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&timezone=${tzParam}&hourly=us_aqi&forecast_days=1`,
+          `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&timezone=${tzParam}&hourly=us_aqi&forecast_days=2`,
           { next: { revalidate: 600 } }
         );
         if (aqiRes.ok) {
@@ -239,7 +251,7 @@ export default async function NowPage() {
       let pollenLevel: string | undefined;
       try {
         const pollenRes = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&timezone=${tzParam}&hourly=grass_pollen,tree_pollen,weed_pollen&forecast_days=1`,
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&timezone=${tzParam}&hourly=grass_pollen,tree_pollen,weed_pollen&forecast_days=2`,
           { next: { revalidate: 10800 } }
         );
         if (pollenRes.ok) {
@@ -275,6 +287,15 @@ export default async function NowPage() {
     // swallow network errors gracefully
   }
 
+  // Filter hourly data to today's remaining hours in local timezone
+  const todayStr = localIsoDate(tzIana); // "YYYY-MM-DD"
+  const currHour = localHour(tzIana); // 0-23
+  const todaysRemaining = hourlyData.filter((h) => {
+    const d = h.time.slice(0, 10);
+    const hh = parseInt(h.time.slice(11, 13), 10);
+    return d === todayStr && hh >= currHour;
+  });
+
   const beachScore =
     weather
       ? computeBeachScore({
@@ -303,8 +324,8 @@ export default async function NowPage() {
   const sunsetTime = calculateSunset(lat, lon);
   const sunsetQuality = weather ? estimateSunsetQuality(weather.cloudCover, sunsetTime) : null;
 
-  // Find best window for activities
-  const bestWindow = hourlyData.length > 0 ? computeBestWindow(hourlyData) : null;
+  // Find best window for activities — use today's remaining hours
+  const bestWindow = todaysRemaining.length > 0 ? computeBestWindow(todaysRemaining) : null;
 
   // Get today's events
   const todaysEvents = getTodaysEvents();
@@ -434,7 +455,13 @@ export default async function NowPage() {
 
             {advice.length > 0 && <AdviceChips advice={advice} />}
 
-            {bestWindow && <BestWindow window={bestWindow} />}
+            {bestWindow ? (
+              <BestWindow window={bestWindow} />
+            ) : (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                No ideal window left today. Try early tomorrow for gentler wind and lower UV.
+              </div>
+            )}
 
             {sunsetQuality && <SunsetPanel sunsetTime={sunsetTime} quality={sunsetQuality} />}
 
