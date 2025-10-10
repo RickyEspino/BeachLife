@@ -2,12 +2,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browserClient";
 import { ResendMagicLink } from "@/components/ResendMagicLink";
 
-export default function CheckEmailPage() {
+function CheckEmailInner() {
   const router = useRouter();
   const params = useSearchParams();
   const email = params.get("email") ?? "";
@@ -36,12 +36,7 @@ export default function CheckEmailPage() {
   }, [router]);
 
   return (
-    <main
-      className="
-        relative min-h-dvh p-6
-        bg-[url('/img/backgrounds/waves.png')] bg-cover bg-center bg-no-repeat
-      "
-    >
+    <main className="relative min-h-dvh p-6 bg-[url('/img/backgrounds/waves.png')] bg-cover bg-center bg-no-repeat">
       <div className="absolute inset-0 bg-black/25 pointer-events-none z-0" />
 
       <div className="relative z-10 mx-auto flex min-h-[calc(100dvh-3rem)] items-center justify-center">
@@ -112,6 +107,14 @@ export default function CheckEmailPage() {
         }
       `}</style>
     </main>
+  );
+}
+
+export default function CheckEmailPage() {
+  return (
+    <Suspense fallback={<main className="relative min-h-dvh p-6 flex items-center justify-center text-white">Loading…</main>}>
+      <CheckEmailInner />
+    </Suspense>
   );
 }
 
